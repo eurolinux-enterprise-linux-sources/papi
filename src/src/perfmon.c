@@ -1,6 +1,6 @@
 /*
 * File:    perfmon.c
-* CVS:     $Id: perfmon.c,v 1.105 2010/04/21 14:04:17 bsheely Exp $
+* CVS:     $Id: perfmon.c,v 1.116 2011/01/26 20:10:43 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    Brian Sheely
@@ -24,6 +24,16 @@
 #include "papi_internal.h"
 #include "papi_vector.h"
 #include "papi_memory.h"
+#include "papi_pfm_events.h"
+
+#include "linux-memory.h"
+#include "linux-timer.h"
+#include "linux-common.h"
+
+#ifdef __ia64__
+#include "perfmon/pfmlib_itanium2.h"
+#include "perfmon/pfmlib_montecito.h"
+#endif
 
 typedef unsigned uint;
 
@@ -32,35 +42,21 @@ typedef unsigned uint;
 hwi_search_t *preset_search_map;
 #ifdef WIN32
 extern int __pfm_getcpuinfo_attr( const char *attr, char *ret_buf,
-								  size_t maxlen );
+						    size_t maxlen );
 extern void OpenWinPMCDriver(  );
 extern void CloseWinPMCDriver(  );
 CRITICAL_SECTION _papi_hwd_lock_data[PAPI_MAX_LOCK];
 #else
 volatile unsigned int _papi_hwd_lock_data[PAPI_MAX_LOCK];
-extern int get_cpu_info( PAPI_hw_info_t * hwinfo );
 #endif
 extern papi_vector_t _papi_pfm_vector;
-extern int _papi_pfm_setup_presets( char *name, int type );
-extern int _papi_pfm_ntv_enum_events( unsigned int *EventCode, int modifier );
-extern int _papi_pfm_ntv_name_to_code( char *ntv_name,
-									   unsigned int *EventCode );
-extern int _papi_pfm_ntv_code_to_name( unsigned int EventCode, char *ntv_name,
-									   int len );
-extern int _papi_pfm_ntv_code_to_descr( unsigned int EventCode, char *ntv_descr,
-										int len );
-extern int _papi_pfm_ntv_code_to_bits( unsigned int EventCode,
-									   hwd_register_t * bits );
-extern int _papi_pfm_ntv_bits_to_info( hwd_register_t * bits, char *names,
-									   unsigned int *values, int name_len,
-									   int count );
 
-int _papi_pfm_set_overflow( EventSetInfo_t * ESI, int EventIndex,
+static int _papi_pfm_set_overflow( EventSetInfo_t * ESI, int EventIndex,
 							int threshold );
 
 /* Static locals */
 
-int _perfmon2_pfm_pmu_type = -1;
+static int _perfmon2_pfm_pmu_type = -1;
 static pfmlib_regmask_t _perfmon2_pfm_unavailable_pmcs;
 static pfmlib_regmask_t _perfmon2_pfm_unavailable_pmds;
 
@@ -196,86 +192,6 @@ dump_smpl( pfm_dfl_smpl_entry_t * entry )
 	SUBDBG( "SMPL.set = %d\n", entry->set );
 	SUBDBG( "SMPL.tgid = %d\n", entry->tgid );
 }
-#endif
-
-/* Hardware clock functions */
-
-/* All architectures should set HAVE_CYCLES in configure if they have these. Not all do
-   so for now, we have to guard at the end of the statement, instead of the top. When
-   all archs set this, this region will be guarded with:
-   #if defined(HAVE_CYCLE) 
-   which is equivalent to
-   #if !defined(HAVE_GETTIMEOFDAY) && !defined(HAVE_CLOCK_GETTIME_REALTIME)
-*/
-
-#if defined(HAVE_MMTIMER)
-inline_static long long
-get_cycles( void )
-{
-	long long tmp = 0;
-	tmp = *mmdev_timer_addr;
-#error "This needs work"
-	return ( tmp );
-}
-#elif defined(__ia64__)
-inline_static long long
-get_cycles( void )
-{
-	long long tmp = 0;
-#if defined(__INTEL_COMPILER)
-	tmp = __getReg( _IA64_REG_AR_ITC );
-#else
-	__asm__ __volatile__( "mov %0=ar.itc":"=r"( tmp )::"memory" );
-#endif
-	switch ( _perfmon2_pfm_pmu_type ) {
-	case PFMLIB_MONTECITO_PMU:
-		tmp = tmp * 4;
-		break;
-	}
-	return tmp;
-}
-#elif (defined(__i386__)||defined(__x86_64__))
-inline_static long long
-get_cycles( void )
-{
-	long long ret = 0;
-#ifdef __x86_64__
-	do {
-		unsigned int a, d;
-		asm volatile ( "rdtsc":"=a" ( a ), "=d"( d ) );
-		( ret ) = ( ( long long ) a ) | ( ( ( long long ) d ) << 32 );
-	} while ( 0 );
-#elif defined WIN32
-	ret = __rdtsc(  );
-#else
-	__asm__ __volatile__( "rdtsc":"=A"( ret )
-						  : );
-#endif
-	return ret;
-}
-
-/* #define get_cycles _rtc ?? */
-#elif defined(__sparc__)
-inline_static long long
-get_cycles( void )
-{
-	register unsigned long ret asm( "g1" );
-
-	__asm__ __volatile__( ".word 0x83410000"	/* rd %tick, %g1 */
-						  :"=r"( ret ) );
-	return ret;
-}
-#elif defined(__powerpc__)
-/*
- * It's not possible to read the cycles from user space on ppc970.
- * There is a 64-bit time-base register (TBU|TBL), but its
- * update rate is implementation-specific and cannot easily be translated
- * into a cycle count.  So don't implement get_cycles for now,
- * but instead, rely on the definition of HAVE_CLOCK_GETTIME_REALTIME in
- * _papi_hwd_get_real_usec() for the needed functionality.
-*/
-#elif !defined(HAVE_GETTIMEOFDAY) && !defined(HAVE_CLOCK_GETTIME_REALTIME)
-#error "No get_cycles support for this architecture. Please modify perfmon.c or compile with a different timer"
 #endif
 
 #define PFM_MAX_PMCDS 20
@@ -509,1109 +425,7 @@ decode_vendor_string( char *s, int *vendor )
 }
 #endif
 
-#if defined(__sparc__)
-static char *
-search_cpu_info( FILE * f, char *search_str, char *line )
-{
-	/* This code courtesy of our friends in Germany. Thanks Rudolph Berrendorf! */
-	/* See the PCL home page for the German version of PAPI. */
-
-	char *s;
-
-	while ( fgets( line, 256, f ) != NULL ) {
-		if ( strstr( line, search_str ) != NULL ) {
-			/* ignore all characters in line up to : */
-			for ( s = line; *s && ( *s != ':' ); ++s );
-			if ( *s )
-				return ( s );
-		}
-	}
-	return ( NULL );
-}
-#endif
-
-#ifdef WIN32
-static int
-get_cpu_info( PAPI_hw_info_t * hw_info )
-{
-	int retval = PAPI_OK;
-	char maxargs[PAPI_HUGE_STR_LEN];
-	char *s;
-	char model[48];
-	int i;
-	for ( i = 0; i < 3; ++i )
-		__cpuid( &model[i * 16], 0x80000002 + i );
-	for ( i = 0; i < 48; ++i )
-		model[i] = tolower( model[i] );
-	if ( ( s = strstr( model, "mhz" ) ) != NULL ) {
-		--s;
-		while ( isspace( *s ) || isdigit( *s ) || *s == '.' && s >= model )
-			--s;
-		++s;
-		hw_info->mhz = ( float ) atof( s );
-	} else if ( ( s = strstr( model, "ghz" ) ) != NULL ) {
-		--s;
-		while ( isspace( *s ) || isdigit( *s ) || *s == '.' && s >= model )
-			--s;
-		++s;
-		hw_info->mhz = ( float ) atof( s ) * 1000;
-	} else
-		return PAPI_EBUG;
-
-	hw_info->clock_mhz = hw_info->mhz;
-
-	__pfm_getcpuinfo_attr( "vendor_id", hw_info->vendor_string,
-						   sizeof ( hw_info->vendor_string ) );
-
-	if ( strlen( hw_info->vendor_string ) )
-		decode_vendor_string( hw_info->vendor_string, &hw_info->vendor );
-	__cpuid( maxargs, 1 );
-	hw_info->revision = *( uint32_t * ) maxargs & 0xf;
-	strcpy( hw_info->model_string, model );
-	return ( retval );
-}
-#endif
-
-#if defined(__i386__)||defined(__x86_64__)
-static int
-x86_get_memory_info( PAPI_hw_info_t * hw_info )
-{
-	int retval = PAPI_OK;
-
-	extern int x86_cache_info( PAPI_mh_info_t * mh_info );
-
-	switch ( hw_info->vendor ) {
-	case PAPI_VENDOR_AMD:
-	case PAPI_VENDOR_INTEL:
-		retval = x86_cache_info( &hw_info->mem_hierarchy );
-		break;
-	default:
-		PAPIERROR( "Unknown vendor in memory information call for x86." );
-		return ( PAPI_ESBSTR );
-	}
-	return retval;
-}
-#endif
-
-/* 2.6.19 has this:
-VmPeak:     4588 kB
-VmSize:     4584 kB
-VmLck:         0 kB
-VmHWM:      1548 kB
-VmRSS:      1548 kB
-VmData:      312 kB
-VmStk:        88 kB
-VmExe:       684 kB
-VmLib:      1360 kB
-VmPTE:        20 kB
-*/
-
-int
-_papi_pfm_get_dmem_info( PAPI_dmem_info_t * d )
-{
-	char fn[PATH_MAX], tmp[PATH_MAX];
-	FILE *f;
-	int ret;
-	long long vmpk = 0, sz = 0, lck = 0, res = 0, shr = 0, stk = 0, txt =
-		0, dat = 0, dum = 0, lib = 0, hwm = 0, pte = 0;
-
-	sprintf( fn, "/proc/%ld/status", ( long ) getpid(  ) );
-	f = fopen( fn, "r" );
-	if ( f == NULL ) {
-		PAPIERROR( "fopen(%s): %s\n", fn, strerror( errno ) );
-		return PAPI_ESBSTR;
-	}
-	while ( 1 ) {
-		if ( fgets( tmp, PATH_MAX, f ) == NULL )
-			break;
-		if ( strspn( tmp, "VmPeak:" ) == strlen( "VmPeak:" ) ) {
-			sscanf( tmp + strlen( "VmPeak:" ), "%lld", &vmpk );
-			d->peak = vmpk;
-			continue;
-		}
-		if ( strspn( tmp, "VmSize:" ) == strlen( "VmSize:" ) ) {
-			sscanf( tmp + strlen( "VmSize:" ), "%lld", &sz );
-			d->size = sz;
-			continue;
-		}
-		if ( strspn( tmp, "VmLck:" ) == strlen( "VmLck:" ) ) {
-			sscanf( tmp + strlen( "VmLck:" ), "%lld", &lck );
-			d->locked = lck;
-			continue;
-		}
-		if ( strspn( tmp, "VmHWM:" ) == strlen( "VmHWM:" ) ) {
-			sscanf( tmp + strlen( "VmHWM:" ), "%lld", &hwm );
-			d->high_water_mark = hwm;
-			continue;
-		}
-		if ( strspn( tmp, "VmRSS:" ) == strlen( "VmRSS:" ) ) {
-			sscanf( tmp + strlen( "VmRSS:" ), "%lld", &res );
-			d->resident = res;
-			continue;
-		}
-		if ( strspn( tmp, "VmData:" ) == strlen( "VmData:" ) ) {
-			sscanf( tmp + strlen( "VmData:" ), "%lld", &dat );
-			d->heap = dat;
-			continue;
-		}
-		if ( strspn( tmp, "VmStk:" ) == strlen( "VmStk:" ) ) {
-			sscanf( tmp + strlen( "VmStk:" ), "%lld", &stk );
-			d->stack = stk;
-			continue;
-		}
-		if ( strspn( tmp, "VmExe:" ) == strlen( "VmExe:" ) ) {
-			sscanf( tmp + strlen( "VmExe:" ), "%lld", &txt );
-			d->text = txt;
-			continue;
-		}
-		if ( strspn( tmp, "VmLib:" ) == strlen( "VmLib:" ) ) {
-			sscanf( tmp + strlen( "VmLib:" ), "%lld", &lib );
-			d->library = lib;
-			continue;
-		}
-		if ( strspn( tmp, "VmPTE:" ) == strlen( "VmPTE:" ) ) {
-			sscanf( tmp + strlen( "VmPTE:" ), "%lld", &pte );
-			d->pte = pte;
-			continue;
-		}
-	}
-	fclose( f );
-
-	sprintf( fn, "/proc/%ld/statm", ( long ) getpid(  ) );
-	f = fopen( fn, "r" );
-	if ( f == NULL ) {
-		PAPIERROR( "fopen(%s): %s\n", fn, strerror( errno ) );
-		return PAPI_ESBSTR;
-	}
-	ret =
-		fscanf( f, "%lld %lld %lld %lld %lld %lld %lld", &dum, &dum, &shr, &dum,
-				&dum, &dat, &dum );
-	if ( ret != 7 ) {
-		PAPIERROR( "fscanf(7 items): %d\n", ret );
-		return PAPI_ESBSTR;
-	}
-	d->pagesize = getpagesize(  ) / 1024;
-	d->shared = ( shr * d->pagesize ) / 1024;
-	fclose( f );
-
-	return PAPI_OK;
-}
-
-#if defined(__ia64__)
-static int
-get_number( char *buf )
-{
-	char numbers[] = "0123456789";
-	int num;
-	char *tmp, *end;
-
-	tmp = strpbrk( buf, numbers );
-	if ( tmp != NULL ) {
-		end = tmp;
-		while ( isdigit( *end ) )
-			end++;
-		*end = '\0';
-		num = atoi( tmp );
-		return ( num );
-	}
-
-	PAPIERROR( "Number could not be parsed from %s", buf );
-	return ( -1 );
-}
-
-static void
-fline( FILE * fp, char *rline )
-{
-	char *tmp, *end, c;
-
-	tmp = rline;
-	end = &rline[1023];
-
-	memset( rline, '\0', 1024 );
-
-	do {
-		if ( feof( fp ) )
-			return;
-		c = getc( fp );
-	} while ( isspace( c ) || c == '\n' || c == '\r' );
-
-	ungetc( c, fp );
-
-	for ( ;; ) {
-		if ( feof( fp ) ) {
-			return;
-		}
-		c = getc( fp );
-		if ( c == '\n' || c == '\r' )
-			break;
-		*tmp++ = c;
-		if ( tmp == end ) {
-			*tmp = '\0';
-			return;
-		}
-	}
-	return;
-}
-
-static int
-ia64_get_memory_info( PAPI_hw_info_t * hw_info )
-{
-	int retval = 0;
-	FILE *f;
-	int clevel = 0, cindex = -1;
-	char buf[1024];
-	int num, i, j;
-	PAPI_mh_info_t *meminfo = &hw_info->mem_hierarchy;
-	PAPI_mh_level_t *L = hw_info->mem_hierarchy.level;
-
-	f = fopen( "/proc/pal/cpu0/cache_info", "r" );
-
-	if ( !f ) {
-		PAPIERROR( "fopen(/proc/pal/cpu0/cache_info) returned < 0" );
-		return ( PAPI_ESYS );
-	}
-
-	while ( !feof( f ) ) {
-		fline( f, buf );
-		if ( buf[0] == '\0' )
-			break;
-		if ( !strncmp( buf, "Data Cache", 10 ) ) {
-			cindex = 1;
-			clevel = get_number( buf );
-			L[clevel - 1].cache[cindex].type = PAPI_MH_TYPE_DATA;
-		} else if ( !strncmp( buf, "Instruction Cache", 17 ) ) {
-			cindex = 0;
-			clevel = get_number( buf );
-			L[clevel - 1].cache[cindex].type = PAPI_MH_TYPE_INST;
-		} else if ( !strncmp( buf, "Data/Instruction Cache", 22 ) ) {
-			cindex = 0;
-			clevel = get_number( buf );
-			L[clevel - 1].cache[cindex].type = PAPI_MH_TYPE_UNIFIED;
-		} else {
-			if ( ( clevel == 0 || clevel > 3 ) && cindex >= 0 ) {
-				PAPIERROR
-					( "Cache type could not be recognized, please send /proc/pal/cpu0/cache_info" );
-				return ( PAPI_EBUG );
-			}
-
-			if ( !strncmp( buf, "Size", 4 ) ) {
-				num = get_number( buf );
-				L[clevel - 1].cache[cindex].size = num;
-			} else if ( !strncmp( buf, "Associativity", 13 ) ) {
-				num = get_number( buf );
-				L[clevel - 1].cache[cindex].associativity = num;
-			} else if ( !strncmp( buf, "Line size", 9 ) ) {
-				num = get_number( buf );
-				L[clevel - 1].cache[cindex].line_size = num;
-				L[clevel - 1].cache[cindex].num_lines =
-					L[clevel - 1].cache[cindex].size / num;
-			}
-		}
-	}
-
-	fclose( f );
-
-	f = fopen( "/proc/pal/cpu0/vm_info", "r" );
-	/* No errors on fopen as I am not sure this is always on the systems */
-	if ( f != NULL ) {
-		cindex = -1;
-		clevel = 0;
-		while ( !feof( f ) ) {
-			fline( f, buf );
-			if ( buf[0] == '\0' )
-				break;
-			if ( !strncmp( buf, "Data Translation", 16 ) ) {
-				cindex = 1;
-				clevel = get_number( buf );
-				L[clevel - 1].tlb[cindex].type = PAPI_MH_TYPE_DATA;
-			} else if ( !strncmp( buf, "Instruction Translation", 23 ) ) {
-				cindex = 0;
-				clevel = get_number( buf );
-				L[clevel - 1].tlb[cindex].type = PAPI_MH_TYPE_INST;
-			} else {
-				if ( ( clevel == 0 || clevel > 2 ) && cindex >= 0 ) {
-					PAPIERROR
-						( "TLB type could not be recognized, send /proc/pal/cpu0/vm_info" );
-					return ( PAPI_EBUG );
-				}
-
-				if ( !strncmp( buf, "Number of entries", 17 ) ) {
-					num = get_number( buf );
-					L[clevel - 1].tlb[cindex].num_entries = num;
-				} else if ( !strncmp( buf, "Associativity", 13 ) ) {
-					num = get_number( buf );
-					L[clevel - 1].tlb[cindex].associativity = num;
-				}
-			}
-		}
-		fclose( f );
-	}
-
-	/* Compute and store the number of levels of hierarchy actually used */
-	for ( i = 0; i < PAPI_MH_MAX_LEVELS; i++ ) {
-		for ( j = 0; j < 2; j++ ) {
-			if ( L[i].tlb[j].type != PAPI_MH_TYPE_EMPTY ||
-				 L[i].cache[j].type != PAPI_MH_TYPE_EMPTY )
-				meminfo->levels = i + 1;
-		}
-	}
-	return retval;
-}
-#endif
-
-#if defined(__powerpc__)
-
-PAPI_mh_info_t sys_mem_info[4] = {
-	{2,						 // 970 begin
-	 {
-	  {						 // level 1 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_UNIFIED, 1024, 4, 0}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_INST, 65536, 128, 512, 1}
-		,
-		{PAPI_MH_TYPE_DATA, 32768, 128, 256, 2}
-		}
-	   }
-	  ,
-	  {						 // level 2 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_UNIFIED, 524288, 128, 4096, 8}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  }
-	 }
-	,						 // 970 end
-	{3,
-	 {
-	  {						 // level 1 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_UNIFIED, 1024, 4, 0}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_INST, 65536, 128, 512, 2}
-		,
-		{PAPI_MH_TYPE_DATA, 32768, 128, 256, 4}
-		}
-	   }
-	  ,
-	  {						 // level 2 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_UNIFIED, 1966080, 128, 15360, 10}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  {						 // level 3 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_UNIFIED, 37748736, 256, 147456, 12}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  }
-	 }
-	,						 // POWER5 end
-	{3,
-	 {
-	  {						 // level 1 begins
-	   {					 // tlb's begin
-		/// POWER6 has an ERAT (Effective to Real Address
-		/// Translation) instead of a TLB.  For the purposes of this
-		/// data, we will treat it like a TLB.
-		{PAPI_MH_TYPE_INST, 128, 2, 0}
-		,
-		{PAPI_MH_TYPE_DATA, 128, 128, 0}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_INST, 65536, 128, 512, 4}
-		,
-		{PAPI_MH_TYPE_DATA, 65536, 128, 512, 8}
-		}
-	   }
-	  ,
-	  {						 // level 2 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_UNIFIED, 4194304, 128, 16384, 8}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  {						 // level 3 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		/// POWER6 has a 2 slice L3 cache.  Each slice is 16MB, so
-		/// combined they are 32MB and usable by each core.  For
-		/// this reason, we will treat it as a single 32MB cache.
-		{PAPI_MH_TYPE_UNIFIED, 33554432, 128, 262144, 16}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  }
-	 }
-	,						 // POWER6 end
-	// This section is a placeholder for Power7 data, and is currently
-	// just a copy of the Power6 data.  When Power7 goes public, this
-	// should be updated.
-	{3,
-	 {
-	  {						 // level 1 begins
-	   {					 // tlb's begin
-		/// POWER7 has an ERAT (Effective to Real Address
-		/// Translation) instead of a TLB.  For the purposes of this
-		/// data, we will treat it like a TLB.
-		{PAPI_MH_TYPE_INST, 128, 2, 0}
-		,
-		{PAPI_MH_TYPE_DATA, 128, 128, 0}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_INST, 65536, 128, 512, 4}
-		,
-		{PAPI_MH_TYPE_DATA, 65536, 128, 512, 8}
-		}
-	   }
-	  ,
-	  {						 // level 2 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		{PAPI_MH_TYPE_UNIFIED, 4194304, 128, 16384, 8}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  {						 // level 3 begins
-	   {					 // tlb's begin
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1}
-		}
-	   ,
-	   {					 // caches begin
-		/// POWER7 has a 2 slice L3 cache.  Each slice is 16MB, so
-		/// combined they are 32MB and usable by each core.  For
-		/// this reason, we will treat it as a single 32MB cache.
-		{PAPI_MH_TYPE_UNIFIED, 33554432, 128, 262144, 16}
-		,
-		{PAPI_MH_TYPE_EMPTY, -1, -1, -1, -1}
-		}
-	   }
-	  ,
-	  }
-	 }						 // POWER7 end
-};
-
-#define SPRN_PVR 0x11F		 /* Processor Version Register */
-#define PVR_PROCESSOR_SHIFT 16
-static unsigned int
-mfpvr( void )
-{
-	unsigned long pvr;
-
-  asm( "mfspr          %0,%1": "=r"( pvr ):"i"( SPRN_PVR ) );
-	return pvr;
-
-}
-
-int
-ppc64_get_memory_info( PAPI_hw_info_t * hw_info )
-{
-	unsigned int pvr = mfpvr(  ) >> PVR_PROCESSOR_SHIFT;
-
-	int index;
-	switch ( pvr ) {
-	case 0x39:				 /* PPC970 */
-	case 0x3C:				 /* PPC970FX */
-	case 0x44:				 /* PPC970MP */
-	case 0x45:				 /* PPC970GX */
-		index = 0;
-		break;
-	case 0x3A:				 /* POWER5 */
-	case 0x3B:				 /* POWER5+ */
-		index = 1;
-		break;
-	case 0x3E:				 /* POWER6 */
-		index = 2;
-		break;
-	case 0x3F:				 /* POWER7 */
-		index = 3;
-		break;
-	default:
-		index = -1;
-		break;
-	}
-
-	if ( index != -1 ) {
-		int cache_level;
-		PAPI_mh_info_t sys_mh_inf = sys_mem_info[index];
-		PAPI_mh_info_t *mh_inf = &hw_info->mem_hierarchy;
-		mh_inf->levels = sys_mh_inf.levels;
-		PAPI_mh_level_t *level = mh_inf->level;
-		PAPI_mh_level_t sys_mh_level;
-		for ( cache_level = 0; cache_level < sys_mh_inf.levels; cache_level++ ) {
-			sys_mh_level = sys_mh_inf.level[cache_level];
-			int cache_idx;
-			for ( cache_idx = 0; cache_idx < 2; cache_idx++ ) {
-				// process TLB info
-				PAPI_mh_tlb_info_t curr_tlb = sys_mh_level.tlb[cache_idx];
-				int type = curr_tlb.type;
-				if ( type != PAPI_MH_TYPE_EMPTY ) {
-					level[cache_level].tlb[cache_idx].type = type;
-					level[cache_level].tlb[cache_idx].associativity =
-						curr_tlb.associativity;
-					level[cache_level].tlb[cache_idx].num_entries =
-						curr_tlb.num_entries;
-				}
-			}
-			for ( cache_idx = 0; cache_idx < 2; cache_idx++ ) {
-				// process cache info
-				PAPI_mh_cache_info_t curr_cache = sys_mh_level.cache[cache_idx];
-				int type = curr_cache.type;
-				if ( type != PAPI_MH_TYPE_EMPTY ) {
-					level[cache_level].cache[cache_idx].type = type;
-					level[cache_level].cache[cache_idx].associativity =
-						curr_cache.associativity;
-					level[cache_level].cache[cache_idx].size = curr_cache.size;
-					level[cache_level].cache[cache_idx].line_size =
-						curr_cache.line_size;
-					level[cache_level].cache[cache_idx].num_lines =
-						curr_cache.num_lines;
-				}
-			}
-		}
-	}
-	return 0;
-}
-#endif
-
-#if defined(__sparc__)
-static int
-sparc_sysfs_cpu_attr( char *name, char **result )
-{
-	const char *path_base = "/sys/devices/system/cpu/";
-	char path_buf[PATH_MAX];
-	char val_buf[32];
-	DIR *sys_cpu;
-
-	sys_cpu = opendir( path_base );
-	if ( sys_cpu ) {
-		struct dirent *cpu;
-
-		while ( ( cpu = readdir( sys_cpu ) ) != NULL ) {
-			int fd;
-
-			if ( strncmp( "cpu", cpu->d_name, 3 ) )
-				continue;
-			strcpy( path_buf, path_base );
-			strcat( path_buf, cpu->d_name );
-			strcat( path_buf, "/" );
-			strcat( path_buf, name );
-
-			fd = open( path_buf, O_RDONLY );
-			if ( fd < 0 )
-				continue;
-
-			if ( read( fd, val_buf, 32 ) < 0 )
-				continue;
-			close( fd );
-
-			*result = strdup( val_buf );
-			return 0;
-		}
-	}
-	return -1;
-}
-
-static int
-sparc_cpu_attr( char *name, unsigned long long *val )
-{
-	char *buf;
-	int r;
-
-	r = sparc_sysfs_cpu_attr( name, &buf );
-	if ( r == -1 )
-		return -1;
-
-	sscanf( buf, "%llu", val );
-
-	free( buf );
-
-	return 0;
-}
-
-static int
-sparc_get_memory_info( PAPI_hw_info_t * hw_info )
-{
-	unsigned long long cache_size, cache_line_size;
-	unsigned long long cycles_per_second;
-	char maxargs[PAPI_HUGE_STR_LEN];
-	PAPI_mh_tlb_info_t *tlb;
-	PAPI_mh_level_t *level;
-	char *s, *t;
-	FILE *f;
-
-	/* First, fix up the cpu vendor/model/etc. values */
-	strcpy( hw_info->vendor_string, "Sun" );
-	hw_info->vendor = PAPI_VENDOR_SUN;
-
-	f = fopen( "/proc/cpuinfo", "r" );
-	if ( !f )
-		return PAPI_ESYS;
-
-	rewind( f );
-	s = search_cpu_info( f, "cpu", maxargs );
-	if ( !s ) {
-		fclose( f );
-		return PAPI_ESYS;
-	}
-
-	t = strchr( s + 2, '\n' );
-	if ( !t ) {
-		fclose( f );
-		return PAPI_ESYS;
-	}
-
-	*t = '\0';
-	strcpy( hw_info->model_string, s + 2 );
-
-	fclose( f );
-
-	if ( sparc_sysfs_cpu_attr( "clock_tick", &s ) == -1 )
-		return PAPI_ESYS;
-
-	sscanf( s, "%llu", &cycles_per_second );
-	free( s );
-
-	hw_info->mhz = cycles_per_second / 1000000;
-	hw_info->clock_mhz = hw_info->mhz;
-
-	/* Now fetch the cache info */
-	hw_info->mem_hierarchy.levels = 3;
-
-	level = &hw_info->mem_hierarchy.level[0];
-
-	sparc_cpu_attr( "l1_icache_size", &cache_size );
-	sparc_cpu_attr( "l1_icache_line_size", &cache_line_size );
-	level[0].cache[0].type = PAPI_MH_TYPE_INST;
-	level[0].cache[0].size = cache_size;
-	level[0].cache[0].line_size = cache_line_size;
-	level[0].cache[0].num_lines = cache_size / cache_line_size;
-	level[0].cache[0].associativity = 1;
-
-	sparc_cpu_attr( "l1_dcache_size", &cache_size );
-	sparc_cpu_attr( "l1_dcache_line_size", &cache_line_size );
-	level[0].cache[1].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_WT;
-	level[0].cache[1].size = cache_size;
-	level[0].cache[1].line_size = cache_line_size;
-	level[0].cache[1].num_lines = cache_size / cache_line_size;
-	level[0].cache[1].associativity = 1;
-
-	sparc_cpu_attr( "l2_cache_size", &cache_size );
-	sparc_cpu_attr( "l2_cache_line_size", &cache_line_size );
-	level[1].cache[0].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_WB;
-	level[1].cache[0].size = cache_size;
-	level[1].cache[0].line_size = cache_line_size;
-	level[1].cache[0].num_lines = cache_size / cache_line_size;
-	level[1].cache[0].associativity = 1;
-
-	tlb = &hw_info->mem_hierarchy.level[0].tlb[0];
-	switch ( _perfmon2_pfm_pmu_type ) {
-	case PFMLIB_SPARC_ULTRA12_PMU:
-		tlb[0].type = PAPI_MH_TYPE_INST | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[0].num_entries = 64;
-		tlb[0].associativity = SHRT_MAX;
-		tlb[1].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[1].num_entries = 64;
-		tlb[1].associativity = SHRT_MAX;
-		break;
-
-	case PFMLIB_SPARC_ULTRA3_PMU:
-	case PFMLIB_SPARC_ULTRA3I_PMU:
-	case PFMLIB_SPARC_ULTRA3PLUS_PMU:
-	case PFMLIB_SPARC_ULTRA4PLUS_PMU:
-		level[0].cache[0].associativity = 4;
-		level[0].cache[1].associativity = 4;
-		level[1].cache[0].associativity = 4;
-
-		tlb[0].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[0].num_entries = 16;
-		tlb[0].associativity = SHRT_MAX;
-		tlb[1].type = PAPI_MH_TYPE_INST | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[1].num_entries = 16;
-		tlb[1].associativity = SHRT_MAX;
-		tlb[2].type = PAPI_MH_TYPE_DATA;
-		tlb[2].num_entries = 1024;
-		tlb[2].associativity = 2;
-		tlb[3].type = PAPI_MH_TYPE_INST;
-		tlb[3].num_entries = 128;
-		tlb[3].associativity = 2;
-		break;
-
-	case PFMLIB_SPARC_NIAGARA1:
-		level[0].cache[0].associativity = 4;
-		level[0].cache[1].associativity = 4;
-		level[1].cache[0].associativity = 12;
-
-		tlb[0].type = PAPI_MH_TYPE_INST | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[0].num_entries = 64;
-		tlb[0].associativity = SHRT_MAX;
-		tlb[1].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[1].num_entries = 64;
-		tlb[1].associativity = SHRT_MAX;
-		break;
-
-	case PFMLIB_SPARC_NIAGARA2:
-		level[0].cache[0].associativity = 8;
-		level[0].cache[1].associativity = 4;
-		level[1].cache[0].associativity = 16;
-
-		tlb[0].type = PAPI_MH_TYPE_INST | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[0].num_entries = 64;
-		tlb[0].associativity = SHRT_MAX;
-		tlb[1].type = PAPI_MH_TYPE_DATA | PAPI_MH_TYPE_PSEUDO_LRU;
-		tlb[1].num_entries = 128;
-		tlb[1].associativity = SHRT_MAX;
-		break;
-	}
-
-	return 0;
-}
-#endif
-
-int
-_papi_pfm_get_memory_info( PAPI_hw_info_t * hwinfo, int unused )
-{
-	( void ) unused;		 /*unused */
-	int retval = PAPI_OK;
-
-#if defined(__i386__)||defined(__x86_64__)
-	x86_get_memory_info( hwinfo );
-#elif defined(__ia64__)
-	ia64_get_memory_info( hwinfo );
-#elif defined(__powerpc__)
-	ppc64_get_memory_info( hwinfo );
-#elif defined(__sparc__)
-	sparc_get_memory_info( hwinfo );
-#else
-#error "No support for this architecture. Please modify perfmon.c"
-#endif
-
-	return ( retval );
-}
-
-int
-_papi_pfm_update_shlib_info( void )
-{
-#ifndef WIN32
-	char fname[PAPI_HUGE_STR_LEN];
-	char buf[PAPI_HUGE_STR_LEN + PAPI_HUGE_STR_LEN], perm[5], dev[16];
-	char mapname[PAPI_HUGE_STR_LEN], lastmapname[PAPI_HUGE_STR_LEN];
-	unsigned long begin = 0, end = 0, size = 0, inode = 0, foo = 0;
-	unsigned long t_index = 0, d_index = 0, b_index = 0, counting = 1;
-	PAPI_address_map_t *tmp = NULL;
-	FILE *f;
-
-	memset( fname, 0x0, sizeof ( fname ) );
-	memset( buf, 0x0, sizeof ( buf ) );
-	memset( perm, 0x0, sizeof ( perm ) );
-	memset( dev, 0x0, sizeof ( dev ) );
-	memset( mapname, 0x0, sizeof ( mapname ) );
-	memset( lastmapname, 0x0, sizeof ( lastmapname ) );
-
-	sprintf( fname, "/proc/%ld/maps", ( long ) _papi_hwi_system_info.pid );
-	f = fopen( fname, "r" );
-
-	if ( !f ) {
-		PAPIERROR( "fopen(%s) returned < 0", fname );
-		return ( PAPI_OK );
-	}
-
-  again:
-	while ( !feof( f ) ) {
-		begin = end = size = inode = foo = 0;
-		if ( fgets( buf, sizeof ( buf ), f ) == 0 )
-			break;
-		/* If mapname is null in the string to be scanned, we need to detect that */
-		if ( strlen( mapname ) )
-			strcpy( lastmapname, mapname );
-		else
-			lastmapname[0] = '\0';
-		/* If mapname is null in the string to be scanned, we need to detect that */
-		mapname[0] = '\0';
-		sscanf( buf, "%lx-%lx %4s %lx %s %ld %s", &begin, &end, perm,
-				&foo, dev, &inode, mapname );
-		size = end - begin;
-
-		/* the permission string looks like "rwxp", where each character can
-		 * be either the letter, or a hyphen.  The final character is either
-		 * p for private or s for shared. */
-
-		if ( counting ) {
-			if ( ( perm[2] == 'x' ) && ( perm[0] == 'r' ) && ( inode != 0 ) ) {
-				if ( strcmp( _papi_hwi_system_info.exe_info.fullname, mapname )
-					 == 0 ) {
-					_papi_hwi_system_info.exe_info.address_info.text_start =
-						( caddr_t ) begin;
-					_papi_hwi_system_info.exe_info.address_info.text_end =
-						( caddr_t ) ( begin + size );
-				}
-				t_index++;
-			} else if ( ( perm[0] == 'r' ) && ( perm[1] == 'w' ) &&
-						( inode != 0 ) &&
-						( strcmp
-						  ( _papi_hwi_system_info.exe_info.fullname,
-							mapname ) == 0 ) ) {
-				_papi_hwi_system_info.exe_info.address_info.data_start =
-					( caddr_t ) begin;
-				_papi_hwi_system_info.exe_info.address_info.data_end =
-					( caddr_t ) ( begin + size );
-				d_index++;
-			} else if ( ( perm[0] == 'r' ) && ( perm[1] == 'w' ) &&
-						( inode == 0 ) &&
-						( strcmp
-						  ( _papi_hwi_system_info.exe_info.fullname,
-							lastmapname ) == 0 ) ) {
-				_papi_hwi_system_info.exe_info.address_info.bss_start =
-					( caddr_t ) begin;
-				_papi_hwi_system_info.exe_info.address_info.bss_end =
-					( caddr_t ) ( begin + size );
-				b_index++;
-			}
-		} else if ( !counting ) {
-			if ( ( perm[2] == 'x' ) && ( perm[0] == 'r' ) && ( inode != 0 ) ) {
-				if ( strcmp( _papi_hwi_system_info.exe_info.fullname, mapname )
-					 != 0 ) {
-					t_index++;
-					tmp[t_index - 1].text_start = ( caddr_t ) begin;
-					tmp[t_index - 1].text_end = ( caddr_t ) ( begin + size );
-					strncpy( tmp[t_index - 1].name, mapname, PAPI_MAX_STR_LEN );
-				}
-			} else if ( ( perm[0] == 'r' ) && ( perm[1] == 'w' ) &&
-						( inode != 0 ) ) {
-				if ( ( strcmp
-					   ( _papi_hwi_system_info.exe_info.fullname,
-						 mapname ) != 0 )
-					 && ( t_index > 0 ) &&
-					 ( tmp[t_index - 1].data_start == 0 ) ) {
-					tmp[t_index - 1].data_start = ( caddr_t ) begin;
-					tmp[t_index - 1].data_end = ( caddr_t ) ( begin + size );
-				}
-			} else if ( ( perm[0] == 'r' ) && ( perm[1] == 'w' ) &&
-						( inode == 0 ) ) {
-				if ( ( t_index > 0 ) && ( tmp[t_index - 1].bss_start == 0 ) ) {
-					tmp[t_index - 1].bss_start = ( caddr_t ) begin;
-					tmp[t_index - 1].bss_end = ( caddr_t ) ( begin + size );
-				}
-			}
-		}
-	}
-
-	if ( counting ) {
-		/* When we get here, we have counted the number of entries in the map
-		   for us to allocate */
-
-		tmp =
-			( PAPI_address_map_t * ) papi_calloc( t_index,
-												  sizeof
-												  ( PAPI_address_map_t ) );
-		if ( tmp == NULL ) {
-			PAPIERROR( "Error allocating shared library address map" );
-			return ( PAPI_ENOMEM );
-		}
-		t_index = 0;
-		rewind( f );
-		counting = 0;
-		goto again;
-	} else {
-		if ( _papi_hwi_system_info.shlib_info.map )
-			papi_free( _papi_hwi_system_info.shlib_info.map );
-		_papi_hwi_system_info.shlib_info.map = tmp;
-		_papi_hwi_system_info.shlib_info.count = t_index;
-
-		fclose( f );
-	}
-#endif /* ! WIN32 */
-	return ( PAPI_OK );
-}
-
-#ifdef WIN32
-static char *
-basename( const char *path )
-{
-	const char *s = path, *last = NULL;
-	while ( *s != '\0' )
-		if ( *s == '\\' )
-			last = s;
-
-	return last ? last + 1 : path;
-}
-#endif
-
-static int
-get_system_info( papi_mdi_t * mdi )
-{
-	int retval;
-	/* Software info */
-
-	/* Path and args */
-
-#ifdef WIN32
-	SYSTEM_INFO si;
-	HANDLE hModule;
-	int len;
-
-	_papi_hwi_system_info.pid = getpid(  );
-
-	hModule = GetModuleHandle( NULL );	// current process
-	len =
-		GetModuleFileName( hModule, mdi->exe_info.fullname, PAPI_MAX_STR_LEN );
-	if ( len )
-		strcpy( mdi->exe_info.address_info.name, mdi->exe_info.fullname );
-	else
-		return ( PAPI_ESYS );
-#else
-	char maxargs[PAPI_HUGE_STR_LEN];
-	pid_t pid;
-
-	pid = getpid(  );
-	if ( pid < 0 ) {
-		PAPIERROR( "getpid() returned < 0" );
-		return ( PAPI_ESYS );
-	}
-	mdi->pid = pid;
-
-	sprintf( maxargs, "/proc/%d/exe", ( int ) pid );
-	if ( readlink( maxargs, mdi->exe_info.fullname, PAPI_HUGE_STR_LEN ) < 0 ) {
-		PAPIERROR( "readlink(%s) returned < 0", maxargs );
-		return ( PAPI_ESYS );
-	}
-
-	/* Careful, basename can modify it's argument */
-
-	strcpy( maxargs, mdi->exe_info.fullname );
-	strcpy( mdi->exe_info.address_info.name, basename( maxargs ) );
-#endif
-	SUBDBG( "Executable is %s\n", mdi->exe_info.address_info.name );
-	SUBDBG( "Full Executable is %s\n", mdi->exe_info.fullname );
-
-	/* Executable regions, may require reading /proc/pid/maps file */
-
-	retval = _papi_pfm_update_shlib_info(  );
-	SUBDBG( "Text: Start %p, End %p, length %d\n",
-			mdi->exe_info.address_info.text_start,
-			mdi->exe_info.address_info.text_end,
-			( int ) ( mdi->exe_info.address_info.text_end -
-					  mdi->exe_info.address_info.text_start ) );
-	SUBDBG( "Data: Start %p, End %p, length %d\n",
-			mdi->exe_info.address_info.data_start,
-			mdi->exe_info.address_info.data_end,
-			( int ) ( mdi->exe_info.address_info.data_end -
-					  mdi->exe_info.address_info.data_start ) );
-	SUBDBG( "Bss: Start %p, End %p, length %d\n",
-			mdi->exe_info.address_info.bss_start,
-			mdi->exe_info.address_info.bss_end,
-			( int ) ( mdi->exe_info.address_info.bss_end -
-					  mdi->exe_info.address_info.bss_start ) );
-
-	/* PAPI_preload_option information */
-
-	strcpy( mdi->preload_info.lib_preload_env, "LD_PRELOAD" );
-	mdi->preload_info.lib_preload_sep = ' ';
-	strcpy( mdi->preload_info.lib_dir_env, "LD_LIBRARY_PATH" );
-	mdi->preload_info.lib_dir_sep = ':';
-
-	/* Hardware info */
-#ifdef WIN32
-	GetSystemInfo( &si );
-	mdi->hw_info.ncpu = mdi->hw_info.totalcpus = si.dwNumberOfProcessors;
-	mdi->hw_info.nnodes = 1;
-#endif
-
-	retval = get_cpu_info( &mdi->hw_info );
-	if ( retval )
-		return ( retval );
-
-	retval = _papi_pfm_get_memory_info( &mdi->hw_info, mdi->hw_info.model );
-	if ( retval )
-		return ( retval );
-
-	SUBDBG( "Found %d %s(%d) %s(%d) CPU's at %f Mhz, clock %d Mhz.\n",
-			mdi->hw_info.totalcpus,
-			mdi->hw_info.vendor_string,
-			mdi->hw_info.vendor,
-			mdi->hw_info.model_string,
-			mdi->hw_info.model, mdi->hw_info.mhz, mdi->hw_info.clock_mhz );
-
-	return ( PAPI_OK );
-}
-
-inline_static pid_t
-mygettid( void )
-{
-#ifdef SYS_gettid
-	return ( syscall( SYS_gettid ) );
-#elif defined(__NR_gettid)
-	return ( syscall( __NR_gettid ) );
-#elif defined WIN32
-	return GetCurrentThreadId(  );
-#else
-	return ( syscall( 1105 ) );
-#endif
-}
-
-
-inline static int
+static inline int
 compute_kernel_args( hwd_control_state_t * ctl0 )
 {
 	pfm_control_state_t *ctl = ( pfm_control_state_t * ) ctl0;
@@ -1674,7 +488,7 @@ compute_kernel_args( hwd_control_state_t * ctl0 )
 				if ( dispatch_count == 0 ) {
 					PAPIERROR( "pfm_dispatch_events(): %s",
 							   pfm_strerror( ret ) );
-					return ( PAPI_ECNFLCT );
+					return ( _papi_pfm_error( ret ) );
 				}
 				SUBDBG
 					( "Dispatch failed because of counter conflict, trying again with %d counters.\n",
@@ -1682,7 +496,7 @@ compute_kernel_args( hwd_control_state_t * ctl0 )
 				goto again;
 			}
 			PAPIERROR( "pfm_dispatch_events(): %s", pfm_strerror( ret ) );
-			return ( PAPI_ECNFLCT );
+			return ( _papi_pfm_error( ret ) );
 		}
 
 		/*
@@ -1880,7 +694,7 @@ detach( hwd_context_t * ctx, hwd_control_state_t * ctl )
 }
 #endif /* ! WIN32 */
 
-inline static int
+static inline int
 set_domain( hwd_control_state_t * ctl0, int domain )
 {
 	pfm_control_state_t *ctl = ( pfm_control_state_t * ) ctl0;
@@ -1915,7 +729,7 @@ set_domain( hwd_control_state_t * ctl0, int domain )
 	return ( compute_kernel_args( ctl ) );
 }
 
-inline static int
+static inline int
 set_granularity( hwd_control_state_t * this_state, int domain )
 {
 	( void ) this_state;	 /*unused */
@@ -1937,7 +751,7 @@ set_granularity( hwd_control_state_t * this_state, int domain )
    inherit performance register information and propagate the values up
    upon child exit and parent wait. */
 
-inline static int
+static inline int
 set_inherit( int arg )
 {
 	( void ) arg;			 /*unused */
@@ -2113,13 +927,13 @@ _papi_pfm_init_substrate( int cidx )
 	SUBDBG( "pfm_get_num_events: %d\n", ncnt );
 	MY_VECTOR.cmp_info.num_native_events = ncnt;
 	strcpy( MY_VECTOR.cmp_info.name,
-			"$Id: perfmon.c,v 1.105 2010/04/21 14:04:17 bsheely Exp $" );
-	strcpy( MY_VECTOR.cmp_info.version, "$Revision: 1.105 $" );
+			"$Id: perfmon.c,v 1.116 2011/01/26 20:10:43 vweaver1 Exp $" );
+	strcpy( MY_VECTOR.cmp_info.version, "$Revision: 1.116 $" );
 	sprintf( buf, "%08x", version );
 
 	pfm_get_num_counters( ( unsigned int * ) &MY_VECTOR.cmp_info.num_cntrs );
 	SUBDBG( "pfm_get_num_counters: %d\n", MY_VECTOR.cmp_info.num_cntrs );
-	retval = get_system_info( &_papi_hwi_system_info );
+	retval = _linux_get_system_info( &_papi_hwi_system_info );
 	if ( retval )
 		return ( retval );
 	if ( _papi_hwi_system_info.hw_info.vendor == PAPI_VENDOR_IBM ) {
@@ -2210,24 +1024,7 @@ _papi_pfm_shutdown_substrate(  )
 	return PAPI_OK;
 }
 
-#if defined(USE_PROC_PTTIMER)
 static int
-init_proc_thread_timer( hwd_context_t * thr_ctx )
-{
-	char buf[LINE_MAX];
-	int fd;
-	sprintf( buf, "/proc/%d/task/%d/stat", getpid(  ), mygettid(  ) );
-	fd = open( buf, O_RDONLY );
-	if ( fd == -1 ) {
-		PAPIERROR( "open(%s)", buf );
-		return ( PAPI_ESYS );
-	}
-	thr_ctx->stat_fd = fd;
-	return ( PAPI_OK );
-}
-#endif
-
-int
 _papi_sub_pfm_init( hwd_context_t * thr_ctx )
 {
 	pfarg_load_t load_args;
@@ -2244,7 +1041,7 @@ _papi_sub_pfm_init( hwd_context_t * thr_ctx )
 	memset( &load_args, 0, sizeof ( load_args ) );
 
 	if ( ( ret = pfm_create_context( &newctx, NULL, NULL, 0 ) ) == -1 ) {
-		PAPIERROR( "_papi_pfm_init:pfm_create_context(): %s",
+		PAPIERROR( "pfm_create_context(): %s",
 				   strerror( errno ) );
 		return ( PAPI_ESYS );
 	}
@@ -2259,153 +1056,6 @@ _papi_sub_pfm_init( hwd_context_t * thr_ctx )
 			sizeof ( load_args ) );
 
 	return ( PAPI_OK );
-}
-
-long long
-_papi_pfm_get_real_usec( void )
-{
-	long long retval;
-#if defined(HAVE_CLOCK_GETTIME_REALTIME)
-	{
-		struct timespec foo;
-		syscall( __NR_clock_gettime, HAVE_CLOCK_GETTIME_REALTIME, &foo );
-		retval = ( long long ) foo.tv_sec * ( long long ) 1000000;
-		retval += ( long long ) ( foo.tv_nsec / 1000 );
-	}
-#elif defined(HAVE_GETTIMEOFDAY)
-	{
-		struct timeval buffer;
-		gettimeofday( &buffer, NULL );
-		retval = ( long long ) buffer.tv_sec * ( long long ) 1000000;
-		retval += ( long long ) ( buffer.tv_usec );
-	}
-#else
-	retval = get_cycles(  ) / ( long long ) _papi_hwi_system_info.hw_info.mhz;
-#endif
-	return ( retval );
-}
-
-long long
-_papi_pfm_get_real_cycles( void )
-{
-	long long retval;
-#if defined(HAVE_GETTIMEOFDAY)||defined(__powerpc__)
-	retval =
-		_papi_pfm_get_real_usec(  ) *
-		( long long ) _papi_hwi_system_info.hw_info.mhz;
-#else
-	retval = get_cycles(  );
-#endif
-	return ( retval );
-}
-
-long long
-_papi_pfm_get_virt_usec( const hwd_context_t * zero )
-{
-#ifndef USE_PROC_PTTIMER
-	( void ) zero;			 /*unused */
-#endif
-	long long retval;
-#if defined(USE_PROC_PTTIMER)
-	{
-		char buf[LINE_MAX];
-		long long utime, stime;
-		int rv, cnt = 0, i = 0;
-
-	  again:
-		rv = read( ( ( pfm_context_t * ) zero )->stat_fd, buf,
-				   LINE_MAX * sizeof ( char ) );
-		if ( rv == -1 ) {
-			if ( errno == EBADF ) {
-				int ret = init_proc_thread_timer( zero );
-				if ( ret != PAPI_OK )
-					return ( ret );
-				goto again;
-			}
-			PAPIERROR( "read()" );
-			return ( PAPI_ESYS );
-		}
-		lseek( ( ( pfm_context_t * ) zero )->stat_fd, 0, SEEK_SET );
-
-		buf[rv] = '\0';
-		SUBDBG( "Thread stat file is:%s\n", buf );
-		while ( ( cnt != 13 ) && ( i < rv ) ) {
-			if ( buf[i] == ' ' ) {
-				cnt++;
-			}
-			i++;
-		}
-		if ( cnt != 13 ) {
-			PAPIERROR( "utime and stime not in thread stat file?" );
-			return ( PAPI_ESBSTR );
-		}
-
-		if ( sscanf( buf + i, "%llu %llu", &utime, &stime ) != 2 ) {
-			PAPIERROR
-				( "Unable to scan two items from thread stat file at 13th space?" );
-			return ( PAPI_ESBSTR );
-		}
-		retval =
-			( utime +
-			  stime ) * ( long long ) 1000000 / MY_VECTOR.cmp_info.clock_ticks;
-	}
-#elif defined(HAVE_CLOCK_GETTIME_THREAD)
-	{
-		struct timespec foo;
-		syscall( __NR_clock_gettime, HAVE_CLOCK_GETTIME_THREAD, &foo );
-		retval = ( long long ) foo.tv_sec * ( long long ) 1000000;
-		retval += ( long long ) foo.tv_nsec / 1000;
-	}
-#elif defined(HAVE_PER_THREAD_TIMES)
-	{
-		struct tms buffer;
-		times( &buffer );
-		SUBDBG( "user %d system %d\n", ( int ) buffer.tms_utime,
-				( int ) buffer.tms_stime );
-		retval =
-			( long long ) ( ( buffer.tms_utime + buffer.tms_stime ) * 1000000 /
-							MY_VECTOR.cmp_info.clock_ticks );
-		/* NOT CLOCKS_PER_SEC as in the headers! */
-	}
-#elif defined(HAVE_PER_THREAD_GETRUSAGE)
-	{
-		struct rusage buffer;
-		getrusage( RUSAGE_SELF, &buffer );
-		SUBDBG( "user %d system %d\n", ( int ) buffer.tms_utime,
-				( int ) buffer.tms_stime );
-		retval =
-			( long long ) ( buffer.ru_utime.tv_sec +
-							buffer.ru_stime.tv_sec ) * ( long long ) 1000000;
-		retval +=
-			( long long ) ( buffer.ru_utime.tv_usec + buffer.ru_stime.tv_usec );
-	}
-#elif defined WIN32
-	HANDLE p;
-	BOOL ret;
-	FILETIME Creation, Exit, Kernel, User;
-	long long virt;
-
-	p = GetCurrentProcess(  );
-	ret = GetProcessTimes( p, &Creation, &Exit, &Kernel, &User );
-	if ( ret ) {
-		virt =
-			( ( ( long long ) ( Kernel.dwHighDateTime +
-								User.dwHighDateTime ) ) << 32 )
-			+ Kernel.dwLowDateTime + User.dwLowDateTime;
-		return ( virt / 1000 );
-	} else
-		return ( PAPI_ESBSTR );
-#else
-#error "No working per thread virtual timer"
-#endif
-	return ( retval );
-}
-
-long long
-_papi_pfm_get_virt_cycles( const hwd_context_t * zero )
-{
-	return ( _papi_pfm_get_virt_usec( zero ) *
-			 ( long long ) _papi_hwi_system_info.hw_info.mhz );
 }
 
 /* reset the hardware counters */
@@ -2688,7 +1338,7 @@ _papi_pfm_stop( hwd_context_t * ctx0, hwd_control_state_t * ctl0 )
 	return PAPI_OK;
 }
 
-inline_static int
+static inline int
 round_requested_ns( int ns )
 {
 	if ( ns <= MY_VECTOR.cmp_info.itimer_res_ns ) {
@@ -3242,7 +1892,7 @@ process_smpl_buf( int num_smpl_pmds, int entry_size, ThreadInfo_t ** thr )
 /* This function  used when hardware overflows ARE working 
     or when software overflows are forced					*/
 
-void
+static void
 _papi_pfm_dispatch_timer( int n, hwd_siginfo_t * info, void *uc )
 {
 	_papi_hwi_context_t ctx;
@@ -3379,7 +2029,7 @@ _papi_pfm_dispatch_timer( int n, hwd_siginfo_t * info, void *uc )
 	}
 }
 
-int
+static int
 _papi_pfm_stop_profiling( ThreadInfo_t * thread, EventSetInfo_t * ESI )
 {
 	( void ) ESI;			 /*unused */
@@ -3387,7 +2037,7 @@ _papi_pfm_stop_profiling( ThreadInfo_t * thread, EventSetInfo_t * ESI )
 	return ( process_smpl_buf( 0, sizeof ( pfm_dfl_smpl_entry_t ), &thread ) );
 }
 
-int
+static int
 _papi_pfm_set_profile( EventSetInfo_t * ESI, int EventIndex, int threshold )
 {
 	int cidx = MY_VECTOR.cmp_info.CmpIdx;
@@ -3512,7 +2162,7 @@ _papi_pfm_set_profile( EventSetInfo_t * ESI, int EventIndex, int threshold )
 
 #endif
 
-int
+static int
 _papi_pfm_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 {
 	pfm_control_state_t *this_state =
@@ -3594,7 +2244,7 @@ _papi_pfm_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 	return ( retval );
 }
 
-int
+static int
 _papi_pfm_init_control_state( hwd_control_state_t * ctl0 )
 {
 	pfm_control_state_t *ctl = ( pfm_control_state_t * ) ctl0;
@@ -3619,7 +2269,7 @@ _papi_pfm_init_control_state( hwd_control_state_t * ctl0 )
 	return ( PAPI_OK );
 }
 
-int
+static int
 _papi_pfm_allocate_registers( EventSetInfo_t * ESI )
 {
 	int i, j;
@@ -3641,7 +2291,7 @@ _papi_pfm_allocate_registers( EventSetInfo_t * ESI )
    updates it with whatever resources are allocated for all the native events
    in the native info structure array. */
 
-int
+static int
 _papi_pfm_update_control_state( hwd_control_state_t * ctl0,
 								NativeInfo_t * native, int count,
 								hwd_context_t * ctx0 )
@@ -3790,7 +2440,7 @@ papi_vector_t _papi_pfm_vector = {
 	.shutdown_substrate = _papi_pfm_shutdown_substrate,
 	.ctl = _papi_pfm_ctl,
 	.update_control_state = _papi_pfm_update_control_state,
-	.update_shlib_info = _papi_pfm_update_shlib_info,
+	.update_shlib_info = _linux_update_shlib_info,
 	.set_domain = set_domain,
 	.reset = _papi_pfm_reset,
 	.set_overflow = _papi_pfm_set_overflow,
@@ -3798,20 +2448,24 @@ papi_vector_t _papi_pfm_vector = {
 	.stop_profiling = _papi_pfm_stop_profiling,
 	.init_substrate = _papi_pfm_init_substrate,
 	.dispatch_timer = _papi_pfm_dispatch_timer,
-	.get_real_usec = _papi_pfm_get_real_usec,
-	.get_real_cycles = _papi_pfm_get_real_cycles,
-	.get_virt_cycles = _papi_pfm_get_virt_cycles,
-	.get_virt_usec = _papi_pfm_get_virt_usec,
-	.get_memory_info = _papi_pfm_get_memory_info,
 	.init = _papi_sub_pfm_init,
-	.get_dmem_info = _papi_pfm_get_dmem_info,
 	.allocate_registers = _papi_pfm_allocate_registers,
 	.write = _papi_pfm_write,
+
+	/* from OS */
+	.get_memory_info = _linux_get_memory_info,
+	.get_dmem_info =   _linux_get_dmem_info,
+	.get_real_usec =   _linux_get_real_usec,
+	.get_real_cycles = _linux_get_real_cycles,
+	.get_virt_cycles = _linux_get_virt_cycles,
+	.get_virt_usec =   _linux_get_virt_usec,
+
+	/* from the counter name library */
 	.ntv_enum_events = _papi_pfm_ntv_enum_events,
 	.ntv_name_to_code = _papi_pfm_ntv_name_to_code,
 	.ntv_code_to_name = _papi_pfm_ntv_code_to_name,
 	.ntv_code_to_descr = _papi_pfm_ntv_code_to_descr,
 	.ntv_code_to_bits = _papi_pfm_ntv_code_to_bits,
 	.ntv_bits_to_info = _papi_pfm_ntv_bits_to_info,
-	/* from OS */
+
 };

@@ -1,5 +1,5 @@
 /*
- * $Id: sdsc4.c,v 1.16 2010/02/22 18:36:04 jagode Exp $
+ * $Id: sdsc4.c,v 1.17 2010/08/25 22:08:19 vweaver1 Exp $
  *
  * Test example for multiplex functionality, originally 
  * provided by Timothy Kaiser, SDSC. It was modified to fit the 
@@ -98,8 +98,13 @@ main( int argc, char **argv )
 		test_fail( __FILE__, __LINE__, "PAPI_assign_eventset_component",
 				   retval );
 
-	if ( ( retval = PAPI_set_multiplex( eventset ) ) )
+	if ( ( retval = PAPI_set_multiplex( eventset ) ) ) {
+	        if ( retval == PAPI_ENOSUPP) {
+		   test_skip(__FILE__, __LINE__, "Multiplex not supported", 1);
+		}
+	   
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", retval );
+	}
 #endif
 
 	nevents = MAXEVENTS;

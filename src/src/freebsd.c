@@ -4,7 +4,7 @@
 
 /* 
 * File:    freebsd.c
-* CVS:     $Id: freebsd.c,v 1.9 2010/05/03 17:27:57 ralph Exp $
+* CVS:     $Id: freebsd.c,v 1.13 2011/01/26 18:53:05 vweaver1 Exp $
 * Author:  Harald Servat
 *          redcrash@gmail.com
 */
@@ -67,7 +67,6 @@ int init_presets(void);
  */
 int _papi_freebsd_init_substrate(int cidx)
 {
-   int retval;
    (void)cidx;
 
    SHOW_WHERE_I_AM;
@@ -86,13 +85,12 @@ int _papi_freebsd_init_substrate(int cidx)
    /* Internal function, doesn't necessarily need to be a function */
    init_presets();
 
-   return retval;
+   return PAPI_OK;
 }
 
 int init_presets(void)
 {
 	const struct pmc_cpuinfo *info;
-	int i;
 
 	SHOW_WHERE_I_AM;
 
@@ -125,6 +123,8 @@ int init_presets(void)
 		Context.CPUsubstrate = CPU_CORE2;
 	else if (strcmp(pmc_name_of_cputype(info->pm_cputype), "INTEL_CORE2EXTREME") == 0)
 		Context.CPUsubstrate = CPU_CORE2EXTREME;
+	else if (strcmp(pmc_name_of_cputype(info->pm_cputype), "INTEL_COREI7") == 0)
+		Context.CPUsubstrate = CPU_COREI7;
 	else
 		/* Unknown processor! */
 		Context.CPUsubstrate = CPU_UNKNOWN;
@@ -747,11 +747,21 @@ int _papi_freebsd_ntv_enum_events(unsigned int *EventCode, int modifier)
 	return PAPI_OK;
 }
 
-int _papi_freebsd_ntv_name_to_code(char *name, int* event_code) {
+int _papi_freebsd_ntv_name_to_code(char *name, unsigned int* event_code) {
   SHOW_WHERE_I_AM;
   (void)name;
   (void)event_code;
-  return PAPI_OK;
+
+	int i;
+
+	for (i = 0; i < MY_VECTOR.cmp_info.num_native_events; i++)
+		if (strcmp (name, _papi_hwd_native_info[Context.CPUsubstrate].info[i].name) == 0)
+		{
+			*event_code = i | PAPI_NATIVE_AND_MASK;
+			return PAPI_OK;
+		}
+
+	return PAPI_ENOEVNT;
 }
 
 int _papi_freebsd_ntv_code_to_name(unsigned int EventCode, char *ntv_name, int len)
@@ -921,7 +931,7 @@ void _papi_freebsd_bpt_map_update(hwd_reg_alloc_t *dst, hwd_reg_alloc_t *src)
 /*
  * Shared Library Information and other Information Functions
  */
-int _papi_freebsd_update_shlib_info(void){
+int _papi_freebsd_update_shlib_info(papi_mdi_t *mdi){
 	SHOW_WHERE_I_AM;
   return PAPI_OK;
 }

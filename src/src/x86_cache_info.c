@@ -11,17 +11,30 @@
 *          Now also supports multiple TLB descriptors
 */
 
-#include "papi.h"
-#include "papi_internal.h"
 #include <string.h>
 #include <stdio.h>
+#include "papi.h"
+#include "papi_internal.h"
+
 
 static void init_mem_hierarchy( PAPI_mh_info_t * mh_info );
-static int init_amd( PAPI_mh_info_t * mh_info );
+static int init_amd( PAPI_mh_info_t * mh_info, int *levels );
 static short int _amd_L2_L3_assoc( unsigned short int pattern );
-static int init_intel( PAPI_mh_info_t * mh_info );
-inline_static void cpuid( unsigned int *, unsigned int *, unsigned int *,
-						  unsigned int * );
+static int init_intel( PAPI_mh_info_t * mh_info , int *levels);
+
+static inline void
+cpuid( unsigned int *a, unsigned int *b, unsigned int *c, unsigned int *d )
+{
+	unsigned int op = *a;
+	// .byte 0x53 == push ebx. it's universal for 32 and 64 bit
+	// .byte 0x5b == pop ebx.
+	// Some gcc's (4.1.2 on Core2) object to pairing push/pop and ebx in 64 bit mode.
+	// Using the opcode directly avoids this problem.
+  __asm__ __volatile__( ".byte 0x53\n\tcpuid\n\tmovl %%ebx, %%esi\n\t.byte 0x5b":"=a"( *a ), "=S"( *b ), "=c"( *c ),
+						  "=d"
+						  ( *d )
+  :					  "a"( op ) );
+}
 
 /* This is the only exposed entry point in this file */
 int
@@ -52,9 +65,9 @@ x86_cache_info( PAPI_mh_info_t * mh_info )
 	init_mem_hierarchy( mh_info );
 
 	if ( !strncmp( "GenuineIntel", &reg.vendor[4], 12 ) ) {
-		mh_info->levels = init_intel( mh_info );
-	} else if ( strncmp( "GenuineIntel", &reg.vendor[4], 12 ) ) {
-		mh_info->levels = init_amd( mh_info );
+	        init_intel( mh_info, &mh_info->levels);
+	} else if ( !strncmp( "AuthenticAMD", &reg.vendor[4], 12 ) ) {
+	  init_amd( mh_info, &mh_info->levels );
 	} else {
 		MEMDBG( "Unsupported cpu type; Not Intel or AMD x86\n" );
 		return ( PAPI_ESBSTR );
@@ -100,9 +113,9 @@ _amd_L2_L3_assoc( unsigned short int pattern )
 	return ( assoc[pattern] );
 }
 
-/* Cache configuration for AMD AThlon/Duron */
+/* Cache configuration for AMD Athlon/Duron */
 static int
-init_amd( PAPI_mh_info_t * mh_info )
+init_amd( PAPI_mh_info_t * mh_info, int *num_levels )
 {
 	union
 	{
@@ -313,10 +326,16 @@ init_amd( PAPI_mh_info_t * mh_info )
 				levels = i + 1;
 		}
 	}
-	return ( levels );
+	*num_levels = levels;
+	return PAPI_OK;
 }
 
    /*
+    * The data from this table now comes from figure 3-17 in
+    *  the Intel Architectures Software Reference Manual 2A
+    *  (cpuid instruction section)
+    * 
+    * Pretviously the information was provided by
     * "Intel® Processor Identification and the CPUID Instruction",
     * Application Note, AP-485, Nov 2008, 241618-033
     * Updated to AP-485, Aug 2009, 241618-036
@@ -414,6 +433,14 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 2,
 	 .line_size = 32,
 	 },
+// 0x0B
+	{.descriptor = 0x0B,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_TLB | PAPI_MH_TYPE_INST,
+	 .size[0] = 4096,
+	 .associativity = 4,
+	 .entries = 4,
+	 },   
 // 0x0C
 	{.descriptor = 0x0C,
 	 .level = 1,
@@ -430,6 +457,14 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 4,
 	 .line_size = 64,
 	 },
+// 0x0E
+	{.descriptor = 0x0E,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_DATA,
+	 .size[0] = 24,
+	 .associativity = 6,
+	 .line_size = 64,
+	 },   
 // 0x21
 	{.descriptor = 0x21,
 	 .level = 2,
@@ -657,6 +692,14 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 24,
 	 .line_size = 64,
 	 },
+// 0x4F
+	{.descriptor = 0x4F,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_TLB | PAPI_MH_TYPE_INST,
+	 .size[0] = 4,
+	 .associativity = SHRT_MAX,
+	 .entries = 32,
+	 },
 // 0x50
 	{.descriptor = 0x50,
 	 .level = 1,
@@ -705,6 +748,14 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 4,
 	 .entries = 16,
 	 },
+// 0x59
+	{.descriptor = 0x59,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_TLB | PAPI_MH_TYPE_DATA,
+	 .size[0] = 4,
+	 .associativity = SHRT_MAX,
+	 .entries = 16,
+	 },   
 // 0x5A
 	{.descriptor = 0x5A,
 	 .level = 1,
@@ -861,6 +912,14 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 2,
 	 .line_size = 64,
 	 },
+// 0x80
+	{.descriptor = 0x80,
+	 .level = 2,
+	 .type = PAPI_MH_TYPE_UNIFIED,
+	 .size[0] = 512,
+	 .associativity = 8,
+	 .line_size = 64,
+	 },   
 // 0x82
 	{.descriptor = 0x82,
 	 .level = 2,
@@ -952,6 +1011,22 @@ static struct _intel_cache_info intel_cache[] = {
 	 .associativity = 4,
 	 .entries = 256,
 	 },
+// 0xBA
+	{.descriptor = 0xBA,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_TLB | PAPI_MH_TYPE_DATA,
+	 .size[0] = 4,
+	 .associativity = 4,
+	 .entries = 64,
+	 },   
+// 0xC0
+	{.descriptor = 0xBA,
+	 .level = 1,
+	 .type = PAPI_MH_TYPE_TLB | PAPI_MH_TYPE_DATA,
+	 .size = {4,4096},
+	 .associativity = 4,
+	 .entries = 8,
+	 },      
 // 0xCA
 	{.descriptor = 0xCA,
 	 .level = 2,
@@ -1173,8 +1248,130 @@ intel_decode_descriptor( struct _intel_cache_info *d, PAPI_mh_level_t * L )
 	}
 }
 
+static inline void
+cpuid2 ( unsigned int* eax, unsigned int* ebx, 
+                    unsigned int* ecx, unsigned int* edx, 
+                    unsigned int index, unsigned int ecx_in )
+{
+  unsigned int a,b,c,d;
+  __asm__ __volatile__ (".byte 0x53\n\tcpuid\n\tmovl %%ebx, %%esi\n\t.byte 0x5b"
+		: "=a" (a), "=S" (b), "=c" (c), "=d" (d) \
+		: "0" (index), "2"(ecx_in) );
+  *eax = a; *ebx = b; *ecx = c; *edx = d;
+}
+
+
 static int
-init_intel( PAPI_mh_info_t * mh_info )
+init_intel_leaf4( PAPI_mh_info_t * mh_info, int *num_levels )
+{
+
+  unsigned int eax, ebx, ecx, edx;
+  unsigned int maxidx, ecx_in;
+  int next;
+
+  int cache_type,cache_level,cache_selfinit,cache_fullyassoc;
+  int cache_maxshare,cache_maxpackage;
+  int cache_linesize,cache_partitions,cache_ways,cache_sets;
+  int cache_wb,cache_inclusive,cache_indexing;
+
+  PAPI_mh_cache_info_t *c;
+
+  *num_levels=0;
+
+  cpuid2(&eax,&ebx,&ecx,&edx, 0, 0);
+  maxidx = eax;
+  
+  if (maxidx<4) {
+    MEMDBG("Warning!  CPUID Index 4 not supported!\n");
+    return PAPI_ENOSUPP;
+  }
+
+  ecx_in=0;
+  while(1) {
+    cpuid2(&eax,&ebx,&ecx,&edx, 4, ecx_in);
+
+
+    
+    /* decoded as per table 3-12 in Intel Software Developer's Manual Volume 2A */
+     
+    cache_type=eax&0x1f;
+    if (cache_type==0) break;     
+     
+    cache_level=(eax>>5)&0x3;
+    cache_selfinit=(eax>>8)&0x1;
+    cache_fullyassoc=(eax>>9)&0x1;
+    cache_maxshare=((eax>>14)&0xfff)+1;
+    cache_maxpackage=((eax>>26)&0x3f)+1;
+     
+    cache_linesize=(ebx&0xfff)+1;
+    cache_partitions=((ebx>>12)&0x3ff)+1;
+    cache_ways=((ebx>>22)&0x3ff)+1;
+       
+    cache_sets=(ecx)+1;
+
+    cache_wb=(edx)&1;
+    cache_inclusive=(edx>>1)&1;
+    cache_indexing=(edx>>2)&1;
+
+    if (cache_level>*num_levels) *num_levels=cache_level;
+
+    /* find next slot available to hold cache info */
+    for ( next = 0; next < PAPI_MH_MAX_LEVELS - 1; next++ ) {
+        if ( mh_info->level[cache_level-1].cache[next].type == PAPI_MH_TYPE_EMPTY ) break;
+    }
+
+    c=&(mh_info->level[cache_level-1].cache[next]);
+
+    switch(cache_type) {
+      case 1: MEMDBG("L%d Data Cache\n",cache_level); 
+	c->type=PAPI_MH_TYPE_DATA;
+	break;
+      case 2: MEMDBG("L%d Instruction Cache\n",cache_level); 
+	c->type=PAPI_MH_TYPE_INST;
+	break;
+      case 3: MEMDBG("L%d Unified Cache\n",cache_level); 
+	c->type=PAPI_MH_TYPE_UNIFIED;
+	break;
+      case 0: break;
+    default: MEMDBG("Unknown Cache Type\n");  
+    }
+     
+    if (cache_selfinit) MEMDBG("\tSelf-init\n");
+    if (cache_fullyassoc) MEMDBG("\tFully Associtative\n");
+     
+    MEMDBG("\tMax logical processors sharing cache: %d\n",cache_maxshare);
+    MEMDBG("\tMax logical processors sharing package: %d\n",cache_maxpackage);
+     
+    MEMDBG("\tCache linesize: %d\n",cache_linesize);
+
+    MEMDBG("\tCache partitions: %d\n",cache_partitions);
+    MEMDBG("\tCache associaticity: %d\n",cache_ways);
+
+    MEMDBG("\tCache sets: %d\n",cache_sets);
+    MEMDBG("\tCache size = %dkB\n",
+	   (cache_ways*cache_partitions*cache_linesize*cache_sets)/1024);
+
+    MEMDBG("\tWBINVD/INVD acts on lower caches: %d\n",cache_wb);
+    MEMDBG("\tCache is not inclusive: %d\n",cache_inclusive);
+    MEMDBG("\tComplex cache indexing: %d\n",cache_indexing);
+
+    c->line_size=cache_linesize;
+    if (cache_fullyassoc) {
+       c->associativity=SHRT_MAX;
+    }
+    else {
+       c->associativity=cache_ways;
+    }
+    c->size=(cache_ways*cache_partitions*cache_linesize*cache_sets);
+    c->num_lines=cache_ways*cache_partitions*cache_sets;
+     
+    ecx_in++;
+  }
+  return PAPI_OK;
+}
+
+static int
+init_intel_leaf2( PAPI_mh_info_t * mh_info , int *num_levels)
 {
 	/* cpuid() returns memory copies of 4 32-bit registers
 	 * this union allows them to be accessed as either registers
@@ -1196,6 +1393,8 @@ init_intel( PAPI_mh_info_t * mh_info )
 	int count;						   /* how many times to call cpuid; from eax:lsb */
 	int size;						   /* size of the descriptor table */
 	int last_level = 0;				   /* how many levels in the cache hierarchy */
+
+	int need_leaf4=0;
 
 	/* All of Intel's cache info is in 1 call to cpuid
 	 * however it is a table lookup :(
@@ -1228,7 +1427,15 @@ init_intel( PAPI_mh_info_t * mh_info )
 			for ( b = 3; b >= 0; b-- ) {	/* walk the descriptor bytes from high to low */
 				i = r * 4 + b;	/* calculate an index into the array of descriptors */
 				if ( i ) {	 /* skip the low order byte in eax [0]; it's the count (see above) */
-					for ( t = 0; t < size; t++ ) {	/* walk the descriptor table */
+				   if ( reg.descrip[i] == 0xff ) {
+				      MEMDBG("Warning! PAPI x86_cache: must implement cpuid leaf 4\n");
+				      need_leaf4=1;
+				      return PAPI_ENOSUPP;
+				      /* we might continue instead */
+				      /* in order to get TLB info  */
+				      /* continue;                 */
+				   }
+					for ( t = 0; t < size; t++ ) {	/* walk the descriptor table */					   
 						if ( reg.descrip[i] == intel_cache[t].descriptor ) {	/* find match */
 							if ( intel_cache[t].level > last_level )
 								last_level = intel_cache[t].level;
@@ -1241,19 +1448,35 @@ init_intel( PAPI_mh_info_t * mh_info )
 		}
 	}
 	MEMDBG( "# of Levels: %d\n", last_level );
-	return ( last_level );
+	*num_levels=last_level;
+	if (need_leaf4) {
+	   return PAPI_ENOSUPP;
+	}
+	return PAPI_OK;
 }
 
-inline_static void
-cpuid( unsigned int *a, unsigned int *b, unsigned int *c, unsigned int *d )
+
+static int
+init_intel( PAPI_mh_info_t * mh_info, int *levels )
 {
-	unsigned int op = *a;
-	// .byte 0x53 == push ebx. it's universal for 32 and 64 bit
-	// .byte 0x5b == pop ebx.
-	// Some gcc's (4.1.2 on Core2) object to pairing push/pop and ebx in 64 bit mode.
-	// Using the opcode directly avoids this problem.
-  __asm__ __volatile__( ".byte 0x53\n\tcpuid\n\tmovl %%ebx, %%esi\n\t.byte 0x5b":"=a"( *a ), "=S"( *b ), "=c"( *c ),
-						  "=d"
-						  ( *d )
-  :					  "a"( op ) );
+
+  int result;
+  int num_levels;
+
+  /* try using the oldest leaf2 method first */
+  result=init_intel_leaf2(mh_info, &num_levels);
+  
+  if (result!=PAPI_OK) {
+     /* All Core2 and newer also support leaf4 detection */
+     /* Starting with Westmere *only* leaf4 is supported */
+     result=init_intel_leaf4(mh_info, &num_levels);
+  }
+
+  *levels=num_levels;
+  return PAPI_OK;
 }
+
+
+
+
+

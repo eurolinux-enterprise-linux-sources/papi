@@ -1,4 +1,4 @@
-# $Id: Rules.pfm,v 1.57 2010/05/21 13:22:32 bsheely Exp $
+# $Id: Rules.pfm,v 1.62 2011/04/14 21:50:37 vweaver1 Exp $
 
 DESCR = "Linux with PFM $(VERSION) kernel support and library"
 
@@ -20,10 +20,12 @@ endif
     PFM_INC_PATH := $(PFM_ROOT)/include
 endif
 
+unexport CFLAGS
+
 OPTIM := $(CFLAGS)
 CFLAGS-3.y := -DPFM30 
 CFLAGS += -I$(PFM_INC_PATH) $(ALTIX) $(CFLAGS-$(VERSION))
-MISCHDRS += pfmwrap.h
+MISCHDRS += perfmon-ia64-pfm.h
 SHLIBDEPS = -Bdynamic -L$(PFM_LIB_PATH) -lpfm
 PFM_OBJS = $(shell $(AR) t $(PFM_LIB_PATH)/libpfm.a 2>/dev/null)
 MISCOBJS = $(PFM_OBJS) $(MISCSRCS:.c=.o)
@@ -31,7 +33,7 @@ MISCOBJS = $(PFM_OBJS) $(MISCSRCS:.c=.o)
 ifeq (,$(PFM_OBJS))
 $(PFM_LIB_PATH)/libpfm.a:
 ifneq (,${PFM_ROOT})
-	$(MAKE) -C $(PFM_ROOT) CC="$(CC)" OPTIM="$(OPTIM)"  CONFIG_PFMLIB_OLD_PFMV2="$(PFM_OLD_PFMV2)"
+	$(MAKE) -C $(PFM_ROOT) ARCH="$(ARCH)" CC="$(CC)" OPTIM="$(OPTIM)" CONFIG_PFMLIB_OLD_PFMV2="$(PFM_OLD_PFMV2)" lib
 else
 	@echo '$@ not installed!'; exit 1
 endif

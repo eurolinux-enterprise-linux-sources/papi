@@ -4,13 +4,18 @@
 
 /**
 * @file    linux-lustre.c
-* CVS:     $Id: linux-lustre.c,v 1.6 2010/06/18 16:06:37 ralph Exp $
+* CVS:     $Id: linux-lustre.c,v 1.7 2011/03/11 20:15:29 ralph Exp $
 * @author  Haihang You (in collaboration with Michael Kluge, TU Dresden)
 *          you@eecs.utk.edu
 * @author  Heike Jagode
 *          jagode@eecs.utk.edu
 * @brief A component for the luster filesystem.
 */
+
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "papi.h"
 #include "papi_internal.h"
@@ -1101,8 +1106,8 @@ papi_vector_t _lustre_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
 				 .name =
-				 "$Id: linux-lustre.c,v 1.6 2010/06/18 16:06:37 ralph Exp $",
-				 .version = "$Revision: 1.6 $",
+				 "$Id: linux-lustre.c,v 1.7 2011/03/11 20:15:29 ralph Exp $",
+				 .version = "$Revision: 1.7 $",
 				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
 				 .num_cntrs = LUSTRE_MAX_COUNTERS,
 				 .default_domain = PAPI_DOM_USER,

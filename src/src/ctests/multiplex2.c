@@ -1,6 +1,6 @@
 /* 
 * File:    multiplex.c
-* CVS:     $Id: multiplex2.c,v 1.36 2010/02/23 22:00:08 bsheely Exp $
+* CVS:     $Id: multiplex2.c,v 1.38 2010/08/25 22:08:19 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>
@@ -52,7 +52,10 @@ case1( void )
 				   retval );
 
 	retval = PAPI_set_multiplex( EventSet );
-	if ( retval != PAPI_OK )
+        if ( retval == PAPI_ENOSUPP) {
+	   test_skip(__FILE__, __LINE__, "Multiplex not supported", 1);
+	}
+        else if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", retval );
 
 	max_mux = PAPI_get_opt( PAPI_MAX_MPX_CTRS, NULL );
@@ -113,6 +116,10 @@ case1( void )
 	printf( "\n" );
 	if ( allvalid ) {
 		printf( "Caution: %d counters had zero values\n", allvalid );
+	}
+   
+        if (allvalid==j) {
+	   test_fail( __FILE__, __LINE__, "All counters returned zero", 5 );
 	}
 
 	for ( i = 0, allvalid = 0; i < j; i++ ) {

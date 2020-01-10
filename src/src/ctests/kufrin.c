@@ -1,6 +1,6 @@
 /* 
 * File:    multiplex1_pthreads.c
-* CVS:     $Id: kufrin.c,v 1.15 2010/03/04 19:05:31 bsheely Exp $
+* CVS:     $Id: kufrin.c,v 1.16 2010/08/25 22:08:19 vweaver1 Exp $
 * Author:  Rick Kufrin
 *          rkufrin@ncsa.uiuc.edu                    
 * Mods:    Philip Mucci
@@ -52,7 +52,10 @@ thread( void *arg )
 	}
 
 	ret = PAPI_set_multiplex( eventset );
-	if ( ret != PAPI_OK ) {
+        if ( ret == PAPI_ENOSUPP) {
+	   test_skip( __FILE__, __LINE__, "Multiplexing not supported", 1 );
+	}
+	else if ( ret != PAPI_OK ) {
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", ret );
 	}
 

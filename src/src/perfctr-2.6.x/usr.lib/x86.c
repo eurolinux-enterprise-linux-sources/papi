@@ -1,4 +1,4 @@
-/* $Id: x86.c,v 1.2.2.10 2010/05/08 13:36:15 mikpe Exp $
+/* $Id: x86.c,v 1.2.2.11 2010/11/07 19:46:06 mikpe Exp $
  * x86-specific perfctr library procedures.
  *
  * Copyright (C) 1999-2010  Mikael Pettersson
@@ -81,6 +81,7 @@ unsigned int perfctr_info_nrctrs(const struct perfctr_info *info)
       case PERFCTR_X86_INTEL_ATOM:
 	return atom_nrctrs();
       case PERFCTR_X86_INTEL_NHLM:
+      case PERFCTR_X86_INTEL_WSTMR:
 	return 7;
       case PERFCTR_X86_GENERIC:
       default:
@@ -137,6 +138,8 @@ const char *perfctr_info_cpu_name(const struct perfctr_info *info)
 	return "Intel Atom";
       case PERFCTR_X86_INTEL_NHLM:
 	return "Intel Nehalem";
+      case PERFCTR_X86_INTEL_WSTMR:
+	return "Intel Westmere";
       default:
         return "?";
     }

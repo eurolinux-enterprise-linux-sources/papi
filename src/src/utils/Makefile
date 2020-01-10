@@ -1,5 +1,5 @@
 # File: utils/Makefile
-# CVS:  $Id: Makefile,v 1.16 2010/05/13 20:38:47 bsheely Exp $
+# CVS:  $Id: Makefile,v 1.18 2011/03/25 21:15:46 ralph Exp $
 INCLUDE = -I../ctests -I. 
 LIBRARY = -lpapi
 PAPILIB = $(LIBRARY)
@@ -8,7 +8,7 @@ CC_R	= $(CC) -pthread
 CFLAGS	= -g -O -Wall
 
 ALL = papi_avail papi_mem_info papi_cost papi_clockres papi_native_avail papi_command_line \
-	  papi_event_chooser papi_decode papi_xml_event_info papi_version
+	  papi_event_chooser papi_decode papi_xml_event_info papi_version papi_multiplex_cost
 UTILOBJS= do_loops.o dummy.o test_utils.o
 
 default all utils: $(UTIL_TARGETS)
@@ -22,8 +22,11 @@ papi_xml_event_info: event_info.c $(PAPILIB) $(UTILOBJS)
 papi_clockres: ../ctests/clockcore.c clockres.c $(PAPILIB) $(UTILOBJS)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) ../ctests/clockcore.c clockres.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o papi_clockres -lm
 
-papi_cost: cost.c $(UTILOBJS) $(PAPILIB)
-	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) cost.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o papi_cost -lm
+papi_cost: cost.c $(UTILOBJS) $(PAPILIB) cost_utils.o
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) cost.c $(UTILOBJS) cost_utils.o $(PAPILIB) $(LDFLAGS) -o papi_cost -lm
+
+papi_multiplex_cost: multiplex_cost.c $(UTILOBJS) $(PAPILIB) cost_utils.o
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) multiplex_cost.c $(UTILOBJS) cost_utils.o $(PAPILIB) $(LDFLAGS) -o papi_multiplex_cost -lm
 
 papi_command_line: command_line.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) command_line.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o papi_command_line
@@ -51,6 +54,9 @@ do_loops.o: ../ctests/do_loops.c ../ctests/papi_test.h ../ctests/test_utils.h
 
 dummy.o: ../ctests/dummy.c
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c ../ctests/dummy.c
+
+cost_utils.o: ../ctests/papi_test.h cost_utils.c
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c cost_utils.c
 
 clean:
 	rm -f *.o *.stderr *.stdout core *~ $(ALL)

@@ -4,7 +4,7 @@
 
 /** 
 * @file		papi_hl.c
-* CVS:		$Id: papi_hl.c,v 1.85 2010/06/15 16:22:14 ralph Exp $
+* CVS:		$Id: papi_hl.c,v 1.86 2010/07/03 00:14:00 bsheely Exp $
 * @author	Philip Mucci
 *			mucci@cs.utk.edu
 * @author	Kevin London
@@ -199,12 +199,17 @@ _internal_cleanup_hl_info( HighLevelInfo * state )
 int
 PAPI_flips( float *rtime, float *ptime, long long *flpins, float *mflips )
 {
+	if ( rtime == NULL || ptime == NULL || flpins == NULL || mflips == NULL )
+		return PAPI_EINVAL;
+
 	HighLevelInfo *state = NULL;
 	int retval;
 
-	if ( ( retval = _internal_check_state( &state ) ) != PAPI_OK )
+	if ( ( retval = _internal_check_state( &state ) ) != PAPI_OK ) 
+	{
+	printf("PAPI_flips return %d\n", retval);
 		return ( retval );
-
+}
 	if ( ( retval =
 		   _hl_rate_calls( rtime, ptime, flpins, mflips,
 						   ( unsigned int ) PAPI_FP_INS, state ) ) != PAPI_OK )
@@ -253,6 +258,9 @@ PAPI_flips( float *rtime, float *ptime, long long *flpins, float *mflips )
 int
 PAPI_flops( float *rtime, float *ptime, long long *flpops, float *mflops )
 {
+	if ( rtime == NULL || ptime == NULL || flpops == NULL || mflops == NULL )
+		return PAPI_EINVAL;
+
 	HighLevelInfo *state = NULL;
 	int retval;
 
@@ -298,6 +306,9 @@ PAPI_flops( float *rtime, float *ptime, long long *flpops, float *mflops )
 int
 PAPI_ipc( float *rtime, float *ptime, long long *ins, float *ipc )
 {
+	if ( rtime == NULL || ptime == NULL || ins == NULL || ipc == NULL )
+		return PAPI_EINVAL;
+
 	HighLevelInfo *state = NULL;
 	int retval;
 

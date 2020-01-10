@@ -1,6 +1,6 @@
 /**
 * @file:   papi_lock.h
-* CVS:     $Id: papi_lock.h,v 1.7 2010/06/02 19:23:31 bsheely Exp $
+* CVS:     $Id: papi_lock.h,v 1.9 2010/08/03 16:24:31 jagode Exp $
 * @author  Philip Mucci
 *          mucci@cs.utk.edu
 */
@@ -8,12 +8,22 @@
 #ifndef PAPI_LOCK_H
 #define PAPI_LOCK_H
 
+/* AIX compiler does not recognize the inline keyword */
+#ifdef _AIX
+#define inline
+#endif 
+
+#ifdef _AIX
+#include <sys/atomic_op.h>
+#endif
+
 #include "papi_defines.h"
 
 #define MUTEX_OPEN 0
 #define MUTEX_CLOSED 1
 
 #ifdef _AIX
+volatile int lock_var[PAPI_MAX_LOCK] = { 0 };
 atomic_p lock[PAPI_MAX_LOCK];
 #else
 volatile unsigned int _papi_hwd_lock_data[PAPI_MAX_LOCK];

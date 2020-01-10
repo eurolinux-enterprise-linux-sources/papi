@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.26.2.44 2010/06/08 20:54:18 mikpe Exp $
+# $Id: Makefile,v 1.26.2.46 2010/11/07 19:48:14 mikpe Exp $
 
 SHELL=/bin/sh
 ARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ -e s/arm.*/arm/ -e s/sa110/arm/)
@@ -6,6 +6,7 @@ CC=gcc
 CFLAGS=-O2 -fomit-frame-pointer -Wall
 BUILD_INCLDIR=../linux/include
 CPPFLAGS=-I$(BUILD_INCLDIR)
+LD=ld
 AR=ar
 ARFLAGS=ruv
 RANLIB=ranlib
@@ -40,7 +41,7 @@ ppc_ABIVER=5
 arm_ABIVER=0
 SO_ABIVER=$($(ARCH)_ABIVER)
 
-SO_LIBVER=2.6.41
+SO_LIBVER=2.6.42
 SO_NAME=libperfctr.so.$(SO_ABIVER)
 SO_LIB=libperfctr.so.$(SO_ABIVER).$(SO_LIBVER)
 
@@ -74,7 +75,7 @@ libperfctr.a:	$(AR_OBJS)
 
 # not installed, only built as a workaround for PAPI's broken Makefiles
 libperfctr.o:	$(AR_OBJS)
-	ld -r -o $@ $(AR_OBJS)
+	$(LD) -r -o $@ $(AR_OBJS)
 
 libperfctr.so:	$(SO_OBJS)
 	$(CC) -shared -o $@ -Wl,-soname,$(SO_NAME) $(SO_OBJS)

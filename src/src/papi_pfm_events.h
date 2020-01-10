@@ -2,37 +2,32 @@
 #define _PAPI_PFM_EVENTS_H
 /* 
 * File:    papi_pfm_events.h
-* CVS:     $Id: papi_pfm_events.h,v 1.5 2010/02/22 18:36:02 jagode Exp $
+* CVS:     $Id: papi_pfm_events.h,v 1.9 2011/05/10 19:39:35 vweaver1 Exp $
 * Author:  Dan Terpstra; extracted from Philip Mucci's perfmon.h
 *          mucci@cs.utk.edu
 *
 */
 
-#include "perfmon/pfmlib.h"
-#include "perfmon/perfmon.h"
-
-#ifdef __ia64__
-#include "perfmon/pfmlib_itanium2.h"
-#include "perfmon/pfmlib_montecito.h"
-#endif
-
-#if defined(DEBUG)
-#define DEBUGCALL(a,b) { if (ISLEVEL(a)) { b; } }
-#else
-#define DEBUGCALL(a,b)
-#endif
-
-#define inline_static inline static
-
-#define PAPI_EVENT_FILE "papi_events.csv"
-
-typedef struct
-{
-	int preset;						   /* Preset code */
-	int derived;					   /* Derived code */
-	char *( findme[MAX_COUNTER_TERMS] );	/* Strings to look for, more than 1 means derived */
-	char *operation;				   /* PostFix operations between terms */
-	char *note;						   /* In case a note is included with a preset */
-} pfm_preset_search_entry_t;
+/* Prototypes for entry points found in papi_pfm_events */
+extern int _papi_pfm_error( int pfm_error );
+extern int _papi_pfm_setup_presets( char *name, int type );
+extern int _papi_pfm_ntv_enum_events( unsigned int *EventCode, int modifier );
+extern int _pfm_get_counter_info( unsigned int event, unsigned int *selector,
+				  int *code );
+extern int _papi_pfm_ntv_name_to_code( char *ntv_name,
+				       unsigned int *EventCode );
+extern int _papi_pfm_ntv_code_to_name( unsigned int EventCode, char *name,
+				       int len );
+extern int _papi_pfm_ntv_code_to_descr( unsigned int EventCode, char *name,
+					int len );
+extern int _papi_pfm_ntv_code_to_bits( unsigned int EventCode,
+				       hwd_register_t * bits );
+extern int _papi_pfm_ntv_bits_to_info( hwd_register_t * bits, char *names,
+				       unsigned int *values, int name_len,
+				       int count );
+extern int _papi_pfm3_init(void);
+extern int _papi_pfm3_vendor_fixups(void);
+extern int _papi_pfm3_setup_counters( uint64_t *pe_event, 
+				      hwd_register_t *ni_bits );
 
 #endif // _PAPI_PFM_EVENTS_H

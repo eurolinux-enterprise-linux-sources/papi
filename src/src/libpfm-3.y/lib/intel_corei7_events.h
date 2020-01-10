@@ -1550,7 +1550,7 @@ static pme_nhm_entry_t corei7_pe[]={
 	{ .pme_name   = "MEM_UNCORE_RETIRED",
 		.pme_desc   = "Load instructions retired which hit offcore",
 		.pme_code   = 0x0F,
-		.pme_flags  = PFMLIB_NHM_UMASK_NCOMBO,
+		.pme_flags  = PFMLIB_NHM_UMASK_NCOMBO|PFMLIB_NHM_EX,
 		.pme_umasks = {
 			{ .pme_uname  = "OTHER_CORE_L2_HITM",
 				.pme_udesc  = "Load instructions retired that HIT modified data in sibling core (Precise Event)",
@@ -1576,16 +1576,18 @@ static pme_nhm_entry_t corei7_pe[]={
 			{ .pme_uname  = "L3_DATA_MISS_UNKNOWN",
 				.pme_udesc  = "Load instructions retired where the memory reference missed L3 and data source is unknown (Model 46 only, Precise Event)",
 				.pme_ucode  = 0x01,
+				.pme_umodel = 46,
 				.pme_uflags = PFMLIB_NHM_PEBS,
 			},
 			/* Model 46 only (must be after common umasks) */
 			{ .pme_uname  = "UNCACHEABLE",
 				.pme_udesc  = "Load instructions retired where the memory reference missed L1, L2, L3 caches and to perform I/O (Model 46 only, Precise Event)",
 				.pme_ucode  = 0x80,
+				.pme_umodel = 46,
 				.pme_uflags = PFMLIB_NHM_PEBS,
 			},
 		},
-		.pme_numasks = 4 /* patched at runtime for model 46 */
+		.pme_numasks = 6 /* patched at runtime for model 46 */
 	},
 	{ .pme_name   = "OFFCORE_REQUESTS",
 		.pme_desc   = "Offcore memory requests",
@@ -2005,8 +2007,13 @@ static pme_nhm_entry_t corei7_pe[]={
 				.pme_ucode  = 0x02,
 				.pme_uflags = 0,
 			},
+			{ .pme_uname  = "MS_CYCLES_ACTIVE",
+				.pme_udesc  = "cycles in which at least one uop is decoded by Microcode Sequencer",
+				.pme_ucode  = 0x2 | (1<< 16), /* counter-mask = 1 */
+			},
+
 		},
-		.pme_numasks = 3
+		.pme_numasks = 4
 	},
 	{ .pme_name   = "UOPS_EXECUTED",
 		.pme_desc   = "Micro-ops executed",

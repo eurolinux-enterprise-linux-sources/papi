@@ -1,0 +1,29 @@
+diff -up papi-4.1.3/src/papi_pfm_events.c.cov2 papi-4.1.3/src/papi_pfm_events.c
+--- papi-4.1.3/src/papi_pfm_events.c.cov2	2011-09-06 17:52:35.463998808 -0400
++++ papi-4.1.3/src/papi_pfm_events.c	2011-09-06 17:55:53.173406784 -0400
+@@ -820,7 +820,7 @@ _papi_pfm_setup_presets( char *pmu_name,
+ 	retval = load_preset_table( pmu_name, pmu_type,
+ 				    _perfmon2_pfm_preset_search_map );
+ 	if ( retval )
+-		goto out;
++		goto out1;
+ 
+ 	retval = generate_preset_search_map( &preset_search_map, &notemap,
+ 					     _perfmon2_pfm_preset_search_map );
+@@ -829,12 +829,14 @@ _papi_pfm_setup_presets( char *pmu_name,
+ 
+ 	retval = _papi_hwi_setup_all_presets( preset_search_map, notemap );
+ out:
+-	free_preset_table( _perfmon2_pfm_preset_search_map );
+-	free( _perfmon2_pfm_preset_search_map );
+ 	free( preset_search_map );
+ 	free_notes( notemap );
+ 	free( notemap );
+ 
++out1:
++	free_preset_table( _perfmon2_pfm_preset_search_map );
++	free( _perfmon2_pfm_preset_search_map );
++
+ 	return retval;
+ }
+ 

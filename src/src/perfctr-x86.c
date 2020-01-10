@@ -1,6 +1,6 @@
 /* 
 * File:    perfctr-x86.c
-* CVS:     $Id: perfctr-x86.c,v 1.4 2010/04/20 19:45:22 bsheely Exp $
+* CVS:     $Id: perfctr-x86.c,v 1.20 2011/02/11 21:48:05 vweaver1 Exp $
 * Author:  Brian Sheely
 *          bsheely@eecs.utk.edu
 * Mods:    <your name here>
@@ -10,60 +10,28 @@
 #include "papi_memory.h"
 #include "papi_internal.h"
 #include "perfctr-x86.h"
+#include "perfmon/pfmlib.h"
+#include "papi_pfm_events.h"
 
 extern native_event_entry_t *native_table;
 extern hwi_search_t *preset_search_map;
 extern caddr_t _start, _init, _etext, _fini, _end, _edata, __bss_start;
-extern int _papi_hwd_get_system_info( void );
 extern unsigned char PENTIUM4;
-extern int _papi_pfm_init(  );
-extern int _papi_pfm_setup_presets( char *name, int type );
-extern int _pfm_get_counter_info( unsigned int event, unsigned int *selector,
-								  int *code );
-extern inline int _pfm_decode_native_event( unsigned int EventCode,
-											unsigned int *event,
-											unsigned int *umask );
-extern inline unsigned int _pfm_convert_umask( unsigned int event,
-											   unsigned int umask );
 
-/* Prototypes for entry points found in linux.c and linux-memory.c */
-extern int _linux_init_substrate( int );
-extern int _linux_ctl( hwd_context_t * ctx, int code,
+#include "linux-memory.h"
+
+/* Prototypes for entry points found in perfctr.c */
+extern int _perfctr_init_substrate( int );
+extern int _perfctr_ctl( hwd_context_t * ctx, int code,
 					   _papi_int_option_t * option );
-extern void _linux_dispatch_timer( int signal, hwd_siginfo_t * si,
+extern void _perfctr_dispatch_timer( int signal, hwd_siginfo_t * si,
 								   void *context );
-extern int _linux_get_memory_info( PAPI_hw_info_t * hw_info, int cpu_type );
-extern int _linux_update_shlib_info( void );
-extern int _linux_get_system_info( void );
-extern int _linux_get_dmem_info( PAPI_dmem_info_t * d );
-extern int _linux_init( hwd_context_t * ctx );
-extern long long _linux_get_real_usec( void );
-extern long long _linux_get_real_cycles( void );
-extern long long _linux_get_virt_cycles( const hwd_context_t * ctx );
-extern long long _linux_get_virt_usec( const hwd_context_t * ctx );
-extern int _linux_shutdown( hwd_context_t * ctx );
 
-/* remap definitions of ntv routines to pfm */
-#define _x86_ntv_enum_events _papi_pfm_ntv_enum_events
-#define _x86_ntv_name_to_code _papi_pfm_ntv_name_to_code
-#define _x86_ntv_code_to_name _papi_pfm_ntv_code_to_name
-#define _x86_ntv_code_to_descr _papi_pfm_ntv_code_to_descr
-#define _x86_ntv_code_to_bits _papi_pfm_ntv_code_to_bits
-#define _x86_ntv_bits_to_info _papi_pfm_ntv_bits_to_info
-/* add an entry that doesn't exist for non-pfm */
-int _x86_ntv_name_to_code( char *name, unsigned int *event_code );
+extern int _perfctr_init( hwd_context_t * ctx );
+extern int _perfctr_shutdown( hwd_context_t * ctx );
 
-/* Prototypes for entry points found in papi_pfm_events */
-extern int _papi_pfm_ntv_enum_events( unsigned int *EventCode, int modifer );
-extern int _papi_pfm_ntv_code_to_name( unsigned int EventCode, char *name,
-									   int len );
-extern int _papi_pfm_ntv_code_to_descr( unsigned int EventCode, char *name,
-										int len );
-extern int _papi_pfm_ntv_code_to_bits( unsigned int EventCode,
-									   hwd_register_t * bits );
-extern int _papi_pfm_ntv_bits_to_info( hwd_register_t * bits, char *names,
-									   unsigned int *values, int name_len,
-									   int count );
+#include "linux-common.h"
+#include "linux-timer.h"
 
 extern papi_mdi_t _papi_hwi_system_info;
 
@@ -99,6 +67,32 @@ extern papi_vector_t MY_VECTOR;
 #else
 #define AMD_FPU "SPECULATIVE"
 #endif
+
+static int
+_papi_pfm_init(  )
+{
+	int retval;
+	unsigned int ncnt;
+
+	/* Opened once for all threads. */
+	SUBDBG( "pfm_initialize()\n" );
+	if ( ( retval = pfm_initialize(  ) ) != PFMLIB_SUCCESS ) {
+		PAPIERROR( "pfm_initialize(): %s", pfm_strerror( retval ) );
+		return ( PAPI_ESBSTR );
+	}
+
+	/* Fill in MY_VECTOR.cmp_info.num_native_events */
+
+	SUBDBG( "pfm_get_num_events(%p)\n", &ncnt );
+	if ( ( retval = pfm_get_num_events( &ncnt ) ) != PFMLIB_SUCCESS ) {
+		PAPIERROR( "pfm_get_num_events(%p): %s", &ncnt,
+				   pfm_strerror( retval ) );
+		return ( PAPI_ESBSTR );
+	}
+	SUBDBG( "pfm_get_num_events() returns: %d\n", ncnt );
+	MY_VECTOR.cmp_info.num_native_events = ( int ) ncnt;
+	return ( PAPI_OK );
+}
 
 static int
 _papi_hwd_fixup_vec( void )
@@ -270,7 +264,7 @@ setup_x86_presets( int cputype )
 #ifdef PERFCTR_X86_INTEL_CORE
 		case PERFCTR_X86_INTEL_CORE:
 			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Core", 0 );
+			_papi_pfm_setup_presets( "Intel Core Duo/Solo", 0 );
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_CORE2
@@ -309,10 +303,16 @@ setup_x86_presets( int cputype )
 			_papi_pfm_setup_presets( "Intel Atom", 0 );
 			break;
 #endif
-#ifdef PERFCTR_X86_INTEL_COREI7	/* family 6 model 26 */
-		case PERFCTR_X86_INTEL_COREI7:
+#ifdef PERFCTR_X86_INTEL_NHLM	/* family 6 model 26 */
+		case PERFCTR_X86_INTEL_NHLM:
 			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Core i7", 0 );
+			_papi_pfm_setup_presets( "Intel Nehalem", 0 );
+			break;
+#endif
+#ifdef PERFCTR_X86_INTEL_WSTMR
+		case PERFCTR_X86_INTEL_WSTMR:
+			retval = _papi_pfm_init(  );
+			_papi_pfm_setup_presets( "Intel Westmere", 0 );
 			break;
 #endif
 		default:
@@ -383,8 +383,11 @@ _x86_init_control_state( hwd_control_state_t * ptr )
 #ifdef PERFCTR_X86_INTEL_ATOM
 		case PERFCTR_X86_INTEL_ATOM:
 #endif
-#ifdef PERFCTR_X86_INTEL_COREI7
-		case PERFCTR_X86_INTEL_COREI7:
+#ifdef PERFCTR_X86_INTEL_NHLM
+		case PERFCTR_X86_INTEL_NHLM:
+#endif
+#ifdef PERFCTR_X86_INTEL_WSTMR
+		case PERFCTR_X86_INTEL_WSTMR:
 #endif
 #ifdef PERFCTR_X86_AMD_K8
 		case PERFCTR_X86_AMD_K8:
@@ -636,7 +639,7 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 
 	for ( i = 0; i < natNum; i++ ) {
 		/* retrieve the mapping information about this native event */
-		_x86_ntv_code_to_bits( ( unsigned int ) ESI->NativeInfoArray[i].
+		_papi_pfm_ntv_code_to_bits( ( unsigned int ) ESI->NativeInfoArray[i].
 							   ni_event, &event_list[i].ra_bits );
 
 		if ( PENTIUM4 ) {
@@ -1145,26 +1148,29 @@ papi_vector_t _x86_vector = {
 	.set_overflow = _x86_set_overflow,
 	.stop_profiling = _x86_stop_profiling,
 
-	/* from pfm */
-	.ntv_enum_events = _x86_ntv_enum_events,
-	.ntv_name_to_code = _x86_ntv_name_to_code,
-	.ntv_code_to_name = _x86_ntv_code_to_name,
-	.ntv_code_to_descr = _x86_ntv_code_to_descr,
-	.ntv_code_to_bits = _x86_ntv_code_to_bits,
-	.ntv_bits_to_info = _x86_ntv_bits_to_info,
+	.init_substrate = _perfctr_init_substrate,
+	.ctl =            _perfctr_ctl,
+	.dispatch_timer = _perfctr_dispatch_timer,
+	.init =           _perfctr_init,
+	.shutdown =       _perfctr_shutdown,
+
 
 	/* from OS */
 	.update_shlib_info = _linux_update_shlib_info,
-	.get_memory_info = _linux_get_memory_info,
-	.get_system_info = _linux_get_system_info,
-	.init_substrate = _linux_init_substrate,
-	.ctl = _linux_ctl,
-	.dispatch_timer = _linux_dispatch_timer,
-	.init = _linux_init,
-	.get_dmem_info = _linux_get_dmem_info,
-	.shutdown = _linux_shutdown,
-	.get_real_usec = _linux_get_real_usec,
-	.get_real_cycles = _linux_get_real_cycles,
-	.get_virt_cycles = _linux_get_virt_cycles,
-	.get_virt_usec = _linux_get_virt_usec
+	.get_dmem_info =     _linux_get_dmem_info,
+	.get_memory_info =   _linux_get_memory_info,
+	.get_system_info =   _linux_get_system_info,
+	.get_real_usec =     _linux_get_real_usec,
+	.get_real_cycles =   _linux_get_real_cycles,
+	.get_virt_cycles =   _linux_get_virt_cycles,
+	.get_virt_usec =     _linux_get_virt_usec,
+
+	/* from pfm */
+	.ntv_enum_events   = _papi_pfm_ntv_enum_events,
+	.ntv_name_to_code  = _papi_pfm_ntv_name_to_code,
+	.ntv_code_to_name  = _papi_pfm_ntv_code_to_name,
+	.ntv_code_to_descr = _papi_pfm_ntv_code_to_descr,
+	.ntv_code_to_bits  = _papi_pfm_ntv_code_to_bits,
+	.ntv_bits_to_info  = _papi_pfm_ntv_bits_to_info,
+
 };

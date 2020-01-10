@@ -204,9 +204,17 @@ print_event( PAPI_event_info_t * info, int offset )
 static int
 parse_unit_masks( PAPI_event_info_t * info )
 {
-	char *pmask;
+  char *pmask,*ptr;
 
-	if ( ( pmask = strchr( info->symbol, ':' ) ) == NULL ) {
+  /* handle libpfm4-style events which have a pmu::event type event name */
+  if ((ptr=strstr(info->symbol, "::"))) {
+    ptr+=2;
+  }
+  else {
+    ptr=info->symbol;
+  }
+
+	if ( ( pmask = strchr( ptr, ':' ) ) == NULL ) {
 		return ( 0 );
 	}
 	memmove( info->symbol, pmask, ( strlen( pmask ) + 1 ) * sizeof ( char ) );
@@ -328,7 +336,7 @@ main( int argc, char **argv )
 			retval = PAPI_get_event_info( i, &info );
 
 			/* This event may not exist */
-			if ( retval == PAPI_ENOEVNT )
+			if ( retval != PAPI_OK )
 				continue;
 
 			/* count only events that as supported by host cpu */

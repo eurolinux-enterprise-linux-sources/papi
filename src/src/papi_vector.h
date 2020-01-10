@@ -43,6 +43,7 @@ typedef struct papi_vectors {
     int		(*read)			(hwd_context_t *, hwd_control_state_t *, long long **, int);	/**< */
     int		(*reset)		(hwd_context_t *, hwd_control_state_t *);		/**< */
     int		(*write)		(hwd_context_t *, hwd_control_state_t *, long long[]);			/**< */
+	int			(*destroy_eventset)	(int *);								/**< */
     long long	(*get_real_cycles)	(void);									/**< */
     long long	(*get_real_usec)	(void);									/**< */
     long long	(*get_virt_cycles)	(const hwd_context_t *);				/**< */
@@ -51,8 +52,8 @@ typedef struct papi_vectors {
     int		(*init_substrate)	(int);										/**< */
     int		(*init)			(hwd_context_t *);								/**< */
     int		(*init_control_state)	(hwd_control_state_t * ptr);			/**< */
-    int		(*update_shlib_info)	(void);									/**< */
-    int		(*get_system_info)	(void);										/**< */
+    int		(*update_shlib_info)	(papi_mdi_t * mdi);									/**< */
+    int		(*get_system_info)	(papi_mdi_t * mdi);										/**< */
     int		(*get_memory_info)	(PAPI_hw_info_t *, int);					/**< */
     int		(*update_control_state)	(hwd_control_state_t *, NativeInfo_t *, int, hwd_context_t *);	/**< */
     int		(*ctl)			(hwd_context_t *, int , _papi_int_option_t *);	/**< */

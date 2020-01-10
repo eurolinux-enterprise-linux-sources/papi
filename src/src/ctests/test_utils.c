@@ -8,6 +8,7 @@
 */
 int TESTS_QUIET = 0;
 static int TEST_FAIL = 0;
+static int TEST_WARN = 0;
 
 /*  Support routine to display header information to the screen
 	from the hardware info data structure. The same code was duplicated
@@ -526,9 +527,15 @@ tests_quiet( int argc, char **argv )
 void
 test_pass( char *file, long long **values, int num_tests )
 {
-	if ( !TEST_FAIL )
+	if ( TEST_FAIL ) {
+	}
+        else if ( TEST_WARN ) {
+		fprintf( stdout, "%-40s PASSED with WARNING\n", file );	   
+	}
+        else {
 		fprintf( stdout, "%-40s PASSED\n", file );
-
+	}
+   
 	if ( values )
 		free_test_space( values, num_tests );
 
@@ -541,6 +548,7 @@ test_pass( char *file, long long **values, int num_tests )
 		exit( 1 );
 }
 
+/* Use a positive value of retval to simply print an error message */
 void
 test_fail( char *file, int line, char *call, int retval )
 {
@@ -577,35 +585,46 @@ test_fail( char *file, int line, char *call, int retval )
 	 */
 }
 
+/* This routine mimics the previous implementation of test_fail()
+	by exiting on completion. It caused problems for threaded apps.
+	If you are not threaded and want to exit, replace calls to 
+	test_fail() with calls to test_fail_exit().
+*/
 void
 test_fail_exit( char *file, int line, char *call, int retval )
 {
-	char buf[128];
-	memset( buf, '\0', sizeof ( buf ) );
-	fprintf( stdout, "%-40s FAILED\nLine # %d\n", file, line );
-
-	if ( retval == PAPI_ESYS ) {
-		sprintf( buf, "System error in %s", call );
-		perror( buf );
-	} else if ( retval > 0 ) {
-		fprintf( stdout, "Error: %s\n", call );
-	} else if ( retval == 0 ) {
-#if defined(sgi)
-		fprintf( stdout, "SGI requires root permissions for this test\n" );
-#else
-		fprintf( stdout, "Error: %s\n", call );
-#endif
-	} else {
-		char errstring[PAPI_MAX_STR_LEN];
-		PAPI_perror( retval, errstring, PAPI_MAX_STR_LEN );
-		fprintf( stdout, "Error in %s: %s\n", call, errstring );
-	}
-
-	fprintf( stdout, "\n" );
-
+	test_fail( file, line, call, retval );
 	if ( PAPI_is_initialized(  ) )
 		PAPI_shutdown(  );
 	exit( 1 );
+}
+
+
+/* Use a positive value of retval to simply print an error message */
+void
+test_warn( char *file, int line, char *call, int retval )
+{
+
+	char buf[128];
+	memset( buf, '\0', sizeof ( buf ) );
+	fprintf( stdout, "%-40s WARNING\nLine # %d\n", file, line );
+
+	if ( retval == PAPI_ESYS ) {
+		sprintf( buf, "System warning in %s", call );
+		perror( buf );
+	} else if ( retval > 0 ) {
+		fprintf( stdout, "Warning: %s\n", call );
+	} else if ( retval == 0 ) {
+		fprintf( stdout, "Warning: %s\n", call );
+	} else {
+		char errstring[PAPI_MAX_STR_LEN];
+		PAPI_perror( retval, errstring, PAPI_MAX_STR_LEN );
+		fprintf( stdout, "Warning in %s: %s\n", call, errstring );
+	}
+
+	fprintf( stdout, "\n" );
+	TEST_WARN++;
+
 }
 
 void
@@ -623,6 +642,9 @@ test_skip( char *file, int line, char *call, int retval )
 		} else if ( retval == PAPI_EPERM ) {
 			fprintf( stdout, "Line # %d\n", line );
 			fprintf( stdout, "Invalid permissions for %s.", call );
+		} else if ( retval == PAPI_ESBSTR ) {
+			fprintf( stdout, "Line # %d\n", line );
+			fprintf( stdout, "%s.", call );
 		} else if ( retval >= 0 ) {
 			fprintf( stdout, "Line # %d\n", line );
 			fprintf( stdout, "Error calculating: %s\n", call );
@@ -634,8 +656,6 @@ test_skip( char *file, int line, char *call, int retval )
 		}
 		fprintf( stdout, "\n" );
 	}
-	if ( PAPI_is_initialized(  ) )
-		PAPI_shutdown(  );
 	exit( 0 );
 }
 
@@ -775,7 +795,7 @@ add_two_nonderived_events( int *num_events, int *papi_event,
 
 /* add native events to use all counters */
 int
-enum_add_native_events( int *num_events, int **evtcodes )
+enum_add_native_events( int *num_events, int **evtcodes, int need_interrupt )
 {
 	/* query and set up the right event to monitor */
 	int EventSet = PAPI_NULL;
@@ -783,12 +803,29 @@ enum_add_native_events( int *num_events, int **evtcodes )
 	unsigned int counters, event_found = 0;
 	PAPI_event_info_t info;
 	const PAPI_component_info_t *s = NULL;
-
+        const PAPI_hw_info_t *hw_info = NULL;
+   
 	s = PAPI_get_component_info( 0 );
 	if ( s == NULL )
 		test_fail( __FILE__, __LINE__, "PAPI_get_component_info", PAPI_ESBSTR );
 
+        hw_info = PAPI_get_hardware_info(  );
+        if ( hw_info == NULL )
+                test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
+   
+   
 	counters = ( unsigned int ) PAPI_num_hwctrs(  );
+   
+        if (need_interrupt) {
+           if ( (!strcmp(hw_info->model_string,"POWER6")) ||
+	        (!strcmp(hw_info->model_string,"POWER5")) ) {
+	   
+	        test_warn(__FILE__, __LINE__,
+			  "Limiting num_counters because of LIMITED_PMC on Power5 and Power6",1);
+                counters=4;
+	   }
+        }
+
 	( *evtcodes ) = ( int * ) calloc( counters, sizeof ( int ) );
 
 	retval = PAPI_create_eventset( &EventSet );
@@ -868,7 +905,7 @@ init_multiplex( void )
 	if ( hw_info == NULL )
 		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
 
-	if ( ( strstr( cmpinfo->name, "linux.c" ) ) &&
+	if ( ( strstr( cmpinfo->name, "perfctr.c" ) ) &&
 		 strcmp( hw_info->model_string, "POWER6" ) == 0 ) {
 		retval = PAPI_set_domain( PAPI_DOM_ALL );
 		if ( retval != PAPI_OK )

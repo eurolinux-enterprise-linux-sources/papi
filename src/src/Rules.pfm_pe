@@ -1,4 +1,4 @@
-# $Id: Rules.pfm_pe,v 1.18 2010/05/21 13:22:32 bsheely Exp $
+# $Id: Rules.pfm_pe,v 1.22 2011/05/10 20:03:52 vweaver1 Exp $
 
 DESCR = "Linux with $(SUBSTR) kernel support and library"
 
@@ -22,6 +22,8 @@ CFLAGS	+= -I$(PFM_INC_PATH)
 endif
 endif
 
+unexport CFLAGS
+
 CFLAGS += -DSUBSTRATE_USES_LIBPFM
 MISCHDRS += perfmon.h papi_pfm_events.h $(PAPI_EVENTS_TABLE)
 MISCSRCS += papi_pfm_events.c
@@ -32,7 +34,7 @@ MISCOBJS = $(PFM_OBJS) $(MISCSRCS:.c=.o)
 ifeq (,$(PFM_OBJS))
 $(PFM_LIB_PATH)/libpfm.a:
 ifneq (,${PFM_ROOT})
-	$(MAKE) -C $(PFM_ROOT) ARCH="$(ARCH)" CC="$(CC)" CONFIG_PFMLIB_OLD_PFMV2="$(PFM_OLD_PFMV2)"
+	$(MAKE) -C $(PFM_ROOT) ARCH="$(ARCH)" CC="$(CC) $(BITFLAGS)" CONFIG_PFMLIB_OLD_PFMV2="$(PFM_OLD_PFMV2)" lib
 else
 	@echo '$@ not installed!'; exit 1
 endif
@@ -65,9 +67,9 @@ ifneq (,${PFM_ROOT})
 endif
 	-install -d $(DESTDIR)$(LIBDIR)
 ifneq (,$(findstring shared,$(LIBS)))
-	cp -p $(SHLIB) $(DESTDIR)$(LIBDIR)/libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE)
-	cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE) libpapi.so.$(PAPIVER)
-	cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE) libpapi.so
+	cp -p $(SHLIB) $(DESTDIR)$(LIBDIR)/libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC)
+	cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) libpapi.so.$(PAPIVER)
+	cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) libpapi.so
 endif
 	-install -d $(DESTDIR)$(DATADIR)
 	cp -f ./papi_events.csv $(DESTDIR)$(DATADIR)

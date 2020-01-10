@@ -311,7 +311,7 @@ _aix_mdi_init(  )
 		_papi_hwi_system_info.exe_info.address_info.bss_end =
 			( caddr_t ) END_OF_BSS;
 	} else {
-		_aix_update_shlib_info(  );
+		_aix_update_shlib_info( &_papi_hwi_system_info );
 	}
 
 /*   _papi_hwi_system_info.supports_64bit_counters = 1;
@@ -325,7 +325,7 @@ _aix_mdi_init(  )
 
 
 static int
-_aix_get_system_info( void )
+_aix_get_system_info( papi_mdi_t *mdi )
 {
 	int retval;
 	/* pm_info_t pminfo; */
@@ -353,8 +353,14 @@ _aix_get_system_info( void )
 	strcpy( _papi_hwi_system_info.exe_info.address_info.name,
 			basename( maxargs ) );
 
-#ifdef _POWER6
-	retval = pm_initialize( PM_INIT_FLAGS, &pminfo, &pmgroups, PM_CURRENT );
+#ifdef _POWER7
+	/* we pass PM_POWER7 for the same reasons as below (power6 case) */
+	retval = pm_initialize( PM_INIT_FLAGS , &pminfo, &pmgroups, PM_POWER7); 
+#elif defined(_POWER6)
+	/* problem with pm_initialize(): it cannot be called multiple times with 
+	   PM_CURRENT; use instead the actual proc type - here PM_POWER6 - 
+	   and multiple invocations are no longer a problem */ 
+	retval = pm_initialize( PM_INIT_FLAGS, &pminfo, &pmgroups, PM_POWER6 );
 #else
 #ifdef _AIXVERSION_510
 #ifdef PM_INITIALIZE
@@ -378,10 +384,11 @@ _aix_get_system_info( void )
 	if ( retval > 0 )
 		return ( retval );
 
-	strcpy( MY_VECTOR.cmp_info.name, "$Id: aix.c,v 1.87 2010/04/16 20:56:19 jagode Exp $" );	/* Name of the substrate we're using */
+	strcpy( MY_VECTOR.cmp_info.name, "$Id: aix.c,v 1.93 2011/04/04 13:45:54 ralph Exp $" );	/* Name of the substrate we're using */
 
 	_aix_mdi_init(  );
 
+	_papi_hwi_system_info.hw_info.nnodes = 1;
 	_papi_hwi_system_info.hw_info.ncpu = _system_configuration.ncpus;
 	_papi_hwi_system_info.hw_info.totalcpus =
 		_papi_hwi_system_info.hw_info.ncpu *
@@ -505,7 +512,7 @@ _aix_init_substrate( int cidx )
 	int retval = PAPI_OK, procidx;
 
 	/* Fill in what we can of the papi_system_info. */
-	retval = MY_VECTOR.get_system_info(  );
+	retval = MY_VECTOR.get_system_info( &_papi_hwi_system_info );
 	if ( retval )
 		return ( retval );
 
@@ -544,6 +551,9 @@ _aix_init_substrate( int cidx )
 		break;
 	case PM_PowerPC970:
 		_papi_pmapi_setup_presets( "PPC970", 0 );
+		break;
+	case PM_POWER7:
+		_papi_pmapi_setup_presets( "POWER7", 0);
 		break;
 	default:
 		fprintf( stderr, "%s is not supported!\n", pminfo.proc_name );
@@ -848,7 +858,7 @@ _aix_stop( hwd_context_t * ctx, hwd_control_state_t * cntrl )
 }
 
 int
-_aix_update_shlib_info( void )
+_aix_update_shlib_info( papi_mdi_t *mdi )
 {
 #if ( ( defined( _AIXVERSION_510) || defined(_AIXVERSION_520)))
 	struct ma_msg_s

@@ -1,5 +1,5 @@
 # File: ctests/Makefile
-# CVS:  $Id: Makefile,v 1.155 2010/06/03 18:40:47 bsheely Exp $
+# CVS:  $Id: Makefile,v 1.162 2011/04/13 05:15:44 mucci Exp $
 INCLUDE = -I.
 LIBRARY = -lpapi
 PAPILIB = $(LIBRARY)
@@ -15,7 +15,7 @@ MPX	= multiplex1 multiplex2 mendes-alt sdsc-mpx sdsc2-mpx sdsc4-mpx
 MPXPTHR	= multiplex1_pthreads multiplex3_pthreads kufrin
 MPI	= mpifirst
 SHARED  = shlib
-SERIAL  = hwinfo code2name reset subinfo realtime virttime first exeinfo \
+SERIAL  = inherit hwinfo code2name reset subinfo realtime virttime first exeinfo \
 	zero branches dmem_info all_native_events all_events derived high-level2 describe memory  \
 	zero_flip low-level high-level eventname case1 case2 \
 	calibrate flops second johnmay2 matrix-hl tenth ipc
@@ -25,12 +25,12 @@ OVERFLOW  = fork_overflow exec_overflow child_overflow system_child_overflow sys
 	overflow overflow_force_software overflow_single_event overflow_twoevents timer_overflow overflow2 \
 	overflow_index overflow_one_and_read overflow_allcounters
 PROFILE  = profile profile_force_software sprofile profile_twoevents byte_profile
-ATTACH	= multiattach zero_attach
+ATTACH	= multiattach multiattach2 zero_attach attach3 attach2 attach_target
 P4_TEST	= p4_lst_ins
 ACPI	= acpi 
 EAR	= earprofile
 RANGE	= data_range
-BROKEN	= inherit pernode
+BROKEN	= pernode
 API = api
 ALL	= $(PTHREADS) $(SERIAL) $(FORKEXEC) $(OVERFLOW) $(PROFILE) $(MPI) $(MPX) $(MPXPTHR) $(OMP) $(SMP) $(SHMEM)\
 	$(SHARED) $(EAR) $(RANGE) $(P4_TEST) $(ACPI) $(ATTACH) $(API)
@@ -306,8 +306,7 @@ high-level2: high-level2.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) high-level2.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o high-level2
 
 shlib: shlib.c $(UTILOBJS) $(PAPILIB)
-	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) shlib.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o shlib -ldl
-	if [ ! -x ./shlib ]; then $(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) shlib.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o shlib; fi
+		$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) shlib.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o shlib $(LDL)
 
 exeinfo: exeinfo.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) exeinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o exeinfo 
@@ -315,17 +314,29 @@ exeinfo: exeinfo.c $(UTILOBJS) $(PAPILIB)
 subinfo: subinfo.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) subinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o subinfo 
 
-zero_attach: zero_attach.c $(UTILOBJS) $(PAPILIB)
-	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero_attach.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero_attach 
-
 hwinfo: hwinfo.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) hwinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o hwinfo
 
 code2name: code2name.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) code2name.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o code2name
 
+attach_target: do_loops.c
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -DDUMMY_DRIVER do_loops.c dummy.o -o attach_target 
+
+zero_attach: zero_attach.c $(UTILOBJS) $(PAPILIB)
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero_attach.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero_attach 
+
 multiattach: multiattach.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) multiattach.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o multiattach 
+
+multiattach2: multiattach2.c $(UTILOBJS) $(PAPILIB)
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) multiattach2.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o multiattach2 
+
+attach3: attach3.c attach_target $(UTILOBJS) $(PAPILIB)
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) attach3.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o attach3 
+
+attach2: attach2.c attach_target $(UTILOBJS) $(PAPILIB)
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) attach2.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o attach2 
 
 reset: reset.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) reset.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o reset 

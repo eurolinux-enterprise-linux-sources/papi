@@ -1,4 +1,4 @@
-/* $Id: x86.c,v 1.2.2.8 2010/05/08 13:36:15 mikpe Exp $
+/* $Id: x86.c,v 1.2.2.9 2010/11/07 19:46:06 mikpe Exp $
  * x86-specific code.
  *
  * Copyright (C) 1999-2010  Mikael Pettersson
@@ -42,6 +42,7 @@ void do_setup(const struct perfctr_info *info,
       case PERFCTR_X86_INTEL_CORE2:
       case PERFCTR_X86_INTEL_ATOM:
       case PERFCTR_X86_INTEL_NHLM:
+      case PERFCTR_X86_INTEL_WSTMR:
       case PERFCTR_X86_AMD_K8:
       case PERFCTR_X86_AMD_K8C:
       case PERFCTR_X86_AMD_FAM10H:

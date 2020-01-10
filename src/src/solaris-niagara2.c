@@ -71,7 +71,7 @@ long_long _niagara2_get_real_usec( void );
 long_long _niagara2_get_real_cycles( void );
 long_long _niagara2_get_virt_usec( const hwd_context_t * );
 long_long _niagara2_get_virt_cycles( const hwd_context_t * );
-int _niagara2_get_system_info( void );
+int _niagara2_get_system_info( papi_mdi_t *mdi );
 int _niagara2_init_control_state( hwd_control_state_t * );
 int _niagara2_init_substrate( int );   // Needs changes
 static void _niagara2_lock_init( void );
@@ -91,7 +91,7 @@ int _niagara2_start( hwd_context_t *, hwd_control_state_t * );
 int _niagara2_stop( hwd_context_t *, hwd_control_state_t * );
 int _niagara2_update_control_state( hwd_control_state_t *, NativeInfo_t *, int,
 									hwd_context_t * );
-int _niagara2_update_shlib_info( void );
+int _niagara2_update_shlib_info( papi_mdi_t );
 /* Functions from solaris-niagara2-memory.c */
 extern int _niagara2_get_memory_info( PAPI_hw_info_t *, int );
 extern int _niagara2_get_dmem_info( PAPI_dmem_info_t * );
@@ -707,7 +707,7 @@ _niagara2_get_virt_cycles( const hwd_context_t * zero )
 }
 
 int
-_niagara2_get_system_info( void )
+_niagara2_get_system_info( papi_mdi_t *mdi )
 {
 	// Used for evaluating return values
 	int retval = 0;
@@ -763,7 +763,7 @@ _niagara2_get_system_info( void )
 	strncpy( _papi_hwi_system_info.exe_info.address_info.name,
 			 basename( _papi_hwi_system_info.exe_info.fullname ),
 			 PAPI_HUGE_STR_LEN );
-	__CHECK_ERR_PAPI( _niagara2_update_shlib_info(  ) );
+	__CHECK_ERR_PAPI( _niagara2_update_shlib_info( &_papi_hwi_system_info ) );
 
 	/* Fill _papi_hwi_system_info.hw_info */
 
@@ -914,7 +914,7 @@ _niagara2_init_substrate( int cidx )
 	SUBDBG( " -> %s: Gathering system information for PAPI\n", __func__ );
 #endif
 	/* Store system info in central data structure */
-	__CHECK_ERR_PAPI( _niagara2_get_system_info(  ) );
+	__CHECK_ERR_PAPI( _niagara2_get_system_info( &_papi_hwi_system_info ) );
 
 #ifdef DEBUG
 	SUBDBG( " -> %s: Initializing locks\n", __func__ );
@@ -1590,7 +1590,7 @@ _niagara2_update_control_state( hwd_control_state_t * ctrl,
 }
 
 int
-_niagara2_update_shlib_info( void )
+_niagara2_update_shlib_info( papi_mdi_t *mdi )
 {
 	char *file = "/proc/self/map";
 	char *resolve_pattern = "/proc/self/path/%s";

@@ -4,7 +4,7 @@
 
 /** 
  * @file    linux-lmsensors.h
- * CVS:     $Id: linux-lmsensors.h,v 1.3 2010/06/15 16:22:14 ralph Exp $
+ * CVS:     $Id: linux-lmsensors.h,v 1.4 2010/10/21 17:47:13 ralph Exp $
  * @author  Daniel Lucio
  * @author  Joachim Protze
  * @author  Heike Jagode
@@ -22,7 +22,7 @@
  *  hardware monitoring sensors through the libsensors library. This code will
  *  dynamically create a native events table for all the sensors that can be 
  *  accesed by the libsensors library.
- *  In order to learn more about libsensors, visit:   http://www.lm-sensors.org/
+ *  In order to learn more about libsensors, visit: (http://www.lm-sensors.org) 
  *
  * Notes: 
  *  - I used the ACPI and MX components to write this component. A lot of the

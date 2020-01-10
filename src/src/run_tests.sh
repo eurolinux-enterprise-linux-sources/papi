@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # File:    papi.c
-# CVS:     $Id: run_tests.sh,v 1.37 2009/11/23 16:23:22 bsheely Exp $
+# CVS:     $Id: run_tests.sh,v 1.44 2011/04/18 15:38:58 ralph Exp $
 # Author:  Philip Mucci
 #          mucci@cs.utk.edu
 # Mods:    Kevin London
@@ -25,12 +25,18 @@ chmod -x ftests/*.[Fch]
 #VALGRIND="valgrind --leak-check=full";
 VALGRIND="";
 
-CTESTS=`find ctests -maxdepth 1 -perm -u+x -type f`;
+#CTESTS=`find ctests -maxdepth 1 -perm -u+x -type f`;
+CTESTS=`find ctests/* -prune -perm -u+x -type f`;
 FTESTS=`find ftests -perm -u+x -type f`;
-EXCLUDE=`grep --regexp=^# --invert-match run_tests_exclude.txt`
+#EXCLUDE=`grep --regexp=^# --invert-match run_tests_exclude.txt`
+EXCLUDE=`grep -v -e '^#' run_tests_exclude.txt`
+
 ALLTESTS="$CTESTS $FTESTS";
 x=0;
 CWD=`pwd`
+
+PATH=./ctests:$PATH
+export PATH
 
 echo "Platform:"
 uname -a
@@ -44,6 +50,7 @@ fi
 echo ""
 
 MATCH=0
+LIST=""
 for i in $ALLTESTS;
 do
   for xtest in $EXCLUDE;
@@ -57,11 +64,18 @@ do
     MATCH=1
   fi;
   if [ $MATCH -ne 1 ]; then
-    echo -n "$i "
+	LIST="$LIST $i"
   fi;
   MATCH=0
 done
+echo $LIST
 echo ""
+
+CUDA=`find Makefile | xargs grep cuda`;
+if [ "$CUDA" != "" ]; then
+  echo "Exclude some fork/thread tests that won't run with CUDA (reason: cannot invoke same GPU from different threads)!";
+  EXCLUDE=`grep -v -e '^#' run_tests_exclude_cuda.txt`
+fi
 
 echo ""
 echo "The following test cases will NOT be run:";
@@ -72,15 +86,15 @@ echo "Running C Tests";
 echo ""
 
 if [ "$LD_LIBRARY_PATH" = "" ]; then
-  LD_LIBRARY_PATH=.:./libpfm-3.y/lib:./libpfm-2.x/libpfm
+  LD_LIBRARY_PATH=.:./libpfm-3.y/lib
 else
-  LD_LIBRARY_PATH=.:./libpfm-3.y/lib:./libpfm-2.x/libpfm:"$LD_LIBRARY_PATH"
+  LD_LIBRARY_PATH=.:./libpfm-3.y/lib:"$LD_LIBRARY_PATH"
 fi
 export LD_LIBRARY_PATH
 if [ "$LIBPATH" = "" ]; then
-  LIBPATH=.:./libpfm-3.y/lib:./libpfm-2.x/libpfm
+  LIBPATH=.:./libpfm-3.y/lib
 else
-  LIBPATH=.:./libpfm-3.y/lib:./libpfm-2.x/libpfm:"$LIBPATH"
+  LIBPATH=.:./libpfm-3.y/lib:"$LIBPATH"
 fi
 export LIBPATH
 
@@ -101,7 +115,8 @@ do
       if [ "$i" = "ctests/timer_overflow" ]; then
         echo Skipping test $i, it takes too long...
       else
-      echo -n "Running $i: ";
+	  RAN="$i $RAN"
+      printf "Running $i:";
       $VALGRIND ./$i $TESTS_QUIET
       fi;
     fi;
@@ -127,9 +142,14 @@ do
   fi;
   if [ $MATCH -ne 1 ]; then
     if [ -x $i ]; then
-    echo -n "Running $i: ";
+	RAN="$i $RAN"
+    printf "Running $i:";
     $VALGRIND ./$i $TESTS_QUIET
     fi;
   fi;
   MATCH=0
 done
+
+if [ "$RAN" = "" ]; then 
+	echo "FAILED to run any tests. (you can safely ignore this if this was expected behavior)"
+fi;

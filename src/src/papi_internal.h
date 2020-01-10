@@ -11,75 +11,18 @@
 *	       london@cs.utk.edu
 * @author  Haihang You
 *          you@cs.utk.edu
-* CVS:     $Id: papi_internal.h,v 1.190 2010/04/16 16:01:47 jagode Exp $
+* CVS:     $Id: papi_internal.h,v 1.200 2011/05/03 17:16:48 vweaver1 Exp $
 */
 
 #ifndef _PAPI_INTERNAL_H
 #define _PAPI_INTERNAL_H
 
-#ifdef DEBUG
+/* AIX's C compiler does not recognize the inline keyword */
+#ifdef _AIX
+#define inline
+#endif 
 
-#ifdef __GNUC__
-#define FUNC __FUNCTION__
-#elif defined(__func__)
-#define FUNC __func__
-#else
-#define FUNC "?"
-#endif
-
-  /* Debug Levels */
-
-#define DEBUG_SUBSTRATE         0x002
-#define DEBUG_API               0x004
-#define DEBUG_INTERNAL          0x008
-#define DEBUG_THREADS           0x010
-#define DEBUG_MULTIPLEX         0x020
-#define DEBUG_OVERFLOW          0x040
-#define DEBUG_PROFILE           0x080
-#define DEBUG_MEMORY            0x100
-#define DEBUG_LEAK              0x200
-#define DEBUG_ALL               (DEBUG_SUBSTRATE|DEBUG_API|DEBUG_INTERNAL|DEBUG_THREADS|DEBUG_MULTIPLEX|DEBUG_OVERFLOW|DEBUG_PROFILE|DEBUG_MEMORY|DEBUG_LEAK)
-
-  /* Please get rid of the DBG macro from your code */
-
-extern int _papi_hwi_debug;
-extern unsigned long int ( *_papi_hwi_thread_id_fn ) ( void );
-
-#define DEBUGLABEL(a) if (_papi_hwi_thread_id_fn) fprintf(stderr, "%s:%s:%s:%d:%d:0x%lx ",a,__FILE__, FUNC, __LINE__,(int)getpid(),_papi_hwi_thread_id_fn()); else fprintf(stderr, "%s:%s:%s:%d:%d ",a,__FILE__, FUNC, __LINE__, (int)getpid())
-#define ISLEVEL(a) (_papi_hwi_debug&a)
-
-#define DEBUGLEVEL(a) ((a&DEBUG_SUBSTRATE)?"SUBSTRATE":(a&DEBUG_API)?"API":(a&DEBUG_INTERNAL)?"INTERNAL":(a&DEBUG_THREADS)?"THREADS":(a&DEBUG_MULTIPLEX)?"MULTIPLEX":(a&DEBUG_OVERFLOW)?"OVERFLOW":(a&DEBUG_PROFILE)?"PROFILE":(a&DEBUG_MEMORY)?"MEMORY":(a&DEBUG_LEAK)?"LEAK":"UNKNOWN")
-
-#ifndef NO_VARARG_MACRO		 /* Has variable arg macro support */
-#define PAPIDEBUG(level,format, args...) { if(_papi_hwi_debug&level){DEBUGLABEL(DEBUGLEVEL(level));fprintf(stderr,format, ## args);}}
-
- /* Macros */
-
-#define SUBDBG(format, args...) (PAPIDEBUG(DEBUG_SUBSTRATE,format, ## args))
-#define APIDBG(format, args...) (PAPIDEBUG(DEBUG_API,format, ## args))
-#define INTDBG(format, args...) (PAPIDEBUG(DEBUG_INTERNAL,format, ## args))
-#define THRDBG(format, args...) (PAPIDEBUG(DEBUG_THREADS,format, ## args))
-#define MPXDBG(format, args...) (PAPIDEBUG(DEBUG_MULTIPLEX,format, ## args))
-#define OVFDBG(format, args...) (PAPIDEBUG(DEBUG_OVERFLOW,format, ## args))
-#define PRFDBG(format, args...) (PAPIDEBUG(DEBUG_PROFILE,format, ## args))
-#define MEMDBG(format, args...) (PAPIDEBUG(DEBUG_MEMORY,format, ## args))
-#define LEAKDBG(format, args...) (PAPIDEBUG(DEBUG_LEAK,format, ## args))
-#endif
-
-#else
-#ifndef NO_VARARG_MACRO		 /* Has variable arg macro support */
-#define SUBDBG(format, args...) { ; }
-#define APIDBG(format, args...) { ; }
-#define INTDBG(format, args...) { ; }
-#define THRDBG(format, args...) { ; }
-#define MPXDBG(format, args...) { ; }
-#define OVFDBG(format, args...) { ; }
-#define PRFDBG(format, args...) { ; }
-#define MEMDBG(format, args...) { ; }
-#define LEAKDBG(format, args...) { ; }
-#define PAPIDEBUG(level, format, args...) { ; }
-#endif
-#endif
+#include "papi_debug.h"
 
 #define DEADBEEF 0xdedbeef
 extern int papi_num_components;
@@ -147,6 +90,7 @@ extern int papi_num_components;
 #define MEMORY_LOCK		PAPI_NUM_LOCK+4	/* papi_memory.c */
 #define SUBSTRATE_LOCK          PAPI_NUM_LOCK+5	/* <substrate.c> */
 #define GLOBAL_LOCK          	PAPI_NUM_LOCK+6	/* papi.c for global variable (static and non) initialization/shutdown */
+#define CPUS_LOCK		PAPI_NUM_LOCK+7	/* cpus.c */
 
 /* extras related */
 
@@ -187,6 +131,10 @@ extern int papi_num_components;
 #include SUBSTRATE
 #include "papi_preset.h"
 
+#ifndef inline_static
+#define inline_static inline static
+#endif
+
 typedef struct _EventSetDomainInfo {
    int domain;
 } EventSetDomainInfo_t;
@@ -209,12 +157,14 @@ typedef struct _EventSetAttachInfo {
   unsigned long tid;
 } EventSetAttachInfo_t;
 
-#if 0
+typedef struct _EventSetCpuInfo {
+  unsigned int cpu_num;
+} EventSetCpuInfo_t;
+
 typedef struct _EventSetInheritInfo
 {
 	int inherit;
 } EventSetInheritInfo_t;
-#endif
 
 /** @internal */
 typedef struct _EventSetProfileInfo {
@@ -238,7 +188,7 @@ typedef struct _EventInfo {
    unsigned int event_code;     /**< Preset or native code for this event as passed to PAPI_add_event() */
    /* should this be MAX_COUNTER_TERMS instead of MAX_COUNTERS ?? (dkt 10/9/03) */
    int pos[MAX_COUNTER_TERMS];   /**< position in the counter array for this events components */
-   char *ops;                   /**< operation string of preset */
+   char *ops;                   /**< operation string of preset (points into preset event struct) */
    int derived;                 /**< Counter derivation command used for derived events */
 } EventInfo_t;
 
@@ -334,11 +284,13 @@ typedef struct EventSetMultiplexInfo {
 /** Opaque struct, not defined yet...due to threads.h <-> papi_internal.h 
  @internal */
 struct _ThreadInfo;
+struct _CpuInfo;
 
 /** Fields below are ordered by access in PAPI_read for performance 
  @internal */
 typedef struct _EventSetInfo {
   struct _ThreadInfo *master;  /**< Pointer to the thread that owns this EventSet */
+  struct _CpuInfo    *CpuInfo; /**< Pointer to cpu that owns this EventSet */
   
   int state;                   /**< The state of this entire EventSet; can be
 				  PAPI_RUNNING or PAPI_STOPPED plus flags */
@@ -376,7 +328,9 @@ typedef struct _EventSetInfo {
   EventSetOverflowInfo_t overflow;
   EventSetMultiplexInfo_t multiplex;
   EventSetAttachInfo_t attach;
+  EventSetCpuInfo_t cpu;
   EventSetProfileInfo_t profile;
+  EventSetInheritInfo_t inherit;
 } EventSetInfo_t;
 
 /** @internal */
@@ -394,6 +348,11 @@ typedef struct _papi_int_attach {
    unsigned long tid;
    EventSetInfo_t *ESI;
 } _papi_int_attach_t;
+
+typedef struct _papi_int_cpu {
+   unsigned int cpu_num;
+   EventSetInfo_t *ESI;
+} _papi_int_cpu_t;
 
 typedef struct _papi_int_multiplex {
    int flags;
@@ -433,13 +392,11 @@ typedef PAPI_itimer_option_t _papi_int_itimer_t;
 #undef multiplex_itimer_num
 #undef multiplex_itimer_us
 
-#if 0
 typedef struct _papi_int_inherit
 {
-	EventSetInfo_t *master;
+	EventSetInfo_t *ESI;
 	int inherit;
 } _papi_int_inherit_t;
-#endif
 
 /** @internal */
 typedef struct _papi_int_addr_range { /* if both are zero, range is disabled */
@@ -457,11 +414,10 @@ typedef union _papi_int_option_t {
    _papi_int_profile_t profile;
    _papi_int_domain_t domain;
    _papi_int_attach_t attach;
+   _papi_int_cpu_t cpu;
    _papi_int_multiplex_t multiplex;
    _papi_int_itimer_t itimer;
-#if 0
 	_papi_int_inherit_t inherit;
-#endif
 	_papi_int_granularity_t granularity;
 	_papi_int_addr_range_t address_range;
 } _papi_int_option_t;
@@ -491,101 +447,8 @@ extern const hwi_describe_t _papi_hwi_err[PAPI_NUM_ERRORS];
 /*extern volatile int _papi_hwi_using_signal;*/
 extern int _papi_hwi_using_signal[PAPI_NSIG];
 
-/*
- * Debug functions for platforms without vararg macro support
- */
-
-#ifdef NO_VARARG_MACRO
-inline_static void
-PAPIDEBUG( int level, char *format, ... )
-{
-#ifdef DEBUG
-	va_list args;
-
-	if ( ISLEVEL( level ) ) {
-		va_start( args, format );
-		DEBUGLABEL( DEBUGLEVEL( level ) );
-		vfprintf( stderr, format, args );
-		va_end( args );
-	} else
-#endif
-		return;
-}
-
-inline_static void
-SUBDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_SUBSTRATE, format );
-#endif
-}
-
-inline_static void
-APIDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_API, format );
-#endif
-}
-
-inline_static void
-INTDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_INTERNAL, format );
-#endif
-}
-
-inline_static void
-THRDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_THREADS, format );
-#endif
-}
-
-inline_static void
-MPXDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_MULTIPLEX, format );
-#endif
-}
-
-inline_static void
-OVFDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_OVERFLOW, format );
-#endif
-}
-
-inline_static void
-PRFDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_PROFILE, format );
-#endif
-}
-
-inline_static void
-MEMDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_MEMORY, format );
-#endif
-}
-
-inline_static void
-LEAKDBG( char *format, ... )
-{
-#ifdef DEBUG
-	PAPIDEBUG( DEBUG_LEAK, format );
-#endif
-}
-#endif
-
 #include "threads.h"
+#include "cpus.h"
 #include "papi_vector.h"
 #include "papi_protos.h"
 
@@ -629,5 +492,74 @@ _papi_hwi_invalid_cmp( int cidx )
 {
 	return ( cidx < 0 || cidx >= papi_num_components );
 }
+
+inline_static hwd_context_t *
+_papi_hwi_get_context( EventSetInfo_t * ESI, int *is_dirty )
+{
+	INTDBG("Entry: ESI: %p, is_dirty: %p\n", ESI, is_dirty);
+	int dirty_ctx;
+	hwd_context_t *ctx=NULL;
+
+	/* assume for now the control state is clean (last updated by this ESI) */
+	dirty_ctx = 0;
+	
+	/* get a context pointer based on if we are counting for a thread or for a cpu */
+	if (ESI->state & PAPI_CPU_ATTACHED) {
+		/* use cpu context */
+		ctx = ESI->CpuInfo->context[ESI->CmpIdx];
+
+		/* if the user wants to know if the control state was last set by the same event set, tell him */
+		if (is_dirty != NULL) {
+			if (ESI->CpuInfo->from_esi != ESI) {
+				dirty_ctx = 1;
+			}
+			*is_dirty = dirty_ctx;
+		}
+		ESI->CpuInfo->from_esi = ESI;
+	   
+	} else {
+
+		/* use thread context */
+		ctx = ESI->master->context[ESI->CmpIdx];
+
+		/* if the user wants to know if the control state was last set by the same event set, tell him */
+		if (is_dirty != NULL) {
+			if (ESI->master->from_esi != ESI) {
+				dirty_ctx = 1;
+			}
+			*is_dirty = dirty_ctx;
+		}
+		ESI->master->from_esi = ESI;
+
+	}
+	return( ctx );
+}
+
+/* function declarations */
+
+extern int _papi_hwi_error_level;
+extern PAPI_debug_handler_t _papi_hwi_debug_handler;
+void PAPIERROR( char *format, ... );
+int _papi_hwi_assign_eventset( EventSetInfo_t * ESI, int cidx );
+void _papi_hwi_free_EventSet( EventSetInfo_t * ESI );
+int _papi_hwi_create_eventset( int *EventSet, ThreadInfo_t * handle );
+int _papi_hwi_lookup_EventCodeIndex( const EventSetInfo_t * ESI,
+				     unsigned int EventCode );
+int _papi_hwi_remove_EventSet( EventSetInfo_t * ESI );
+void _papi_hwi_remap_event_position( EventSetInfo_t * ESI, int thisindex, int total_events );
+int _papi_hwi_add_event( EventSetInfo_t * ESI, int EventCode );
+int _papi_hwi_add_pevent( EventSetInfo_t * ESI, int EventCode, void *inout );
+int _papi_hwi_remove_event( EventSetInfo_t * ESI, int EventCode );
+int _papi_hwi_read( hwd_context_t * context, EventSetInfo_t * ESI,
+		    long long *values );
+int _papi_hwi_cleanup_eventset( EventSetInfo_t * ESI );
+int _papi_hwi_convert_eventset_to_multiplex( _papi_int_multiplex_t * mpx );
+int _papi_hwi_init_global( void );
+int _papi_hwi_init_global_internal( void );
+void _papi_hwi_shutdown_global_internal( void );
+void _papi_hwi_dummy_handler( int EventSet, void *address, long long overflow_vector,
+			      void *context );
+int _papi_hwi_bipartite_alloc( hwd_reg_alloc_t * event_list, int count, int cidx );
+int _papi_hwi_get_event_info( int EventCode, PAPI_event_info_t * info );
 
 #endif /* PAPI_INTERNAL_H */

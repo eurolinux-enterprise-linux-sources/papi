@@ -1,8 +1,10 @@
 /* 
 * File:    overflow_allcounters.c
-* CVS:     $Id: overflow_allcounters.c,v 1.9 2010/02/22 18:36:03 jagode Exp $
+* CVS:     $Id: overflow_allcounters.c,v 1.14 2010/12/09 22:10:16 jagode Exp $
 * Author:  Haihang You
 *          you@cs.utk.edu
+* Mods:    Vince Weaver
+*          vweaver1@eecs.utk.edu
 * Mods:    <your name here>
 *          <your email address>
 */
@@ -55,6 +57,9 @@ main( int argc, char **argv )
 	const PAPI_hw_info_t *hw_info = NULL;
 	int num_events, *ovt;
 	char name[PAPI_MAX_STR_LEN];
+	const PAPI_component_info_t *comp_info = NULL;
+	int using_perfmon = 0;
+	int using_aix = 0;
 
 	tests_quiet( argc, argv );	/* Set TESTS_QUIET variable */
 
@@ -64,12 +69,23 @@ main( int argc, char **argv )
 
 	hw_info = PAPI_get_hardware_info(  );
 	if ( hw_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
+		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", retval );
+
+	comp_info = PAPI_get_component_info( 0 );
+	if ( hw_info == NULL )
+		test_fail( __FILE__, __LINE__, "PAPI_get_component_info", retval );
+
+	if ( strstr( comp_info->name, "perfmon.c" ) )
+		using_perfmon = 1;
+	if ( strstr( comp_info->name, "aix.c" ) )
+		using_aix = 1;
+
 
 	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
 	   PAPI_TOT_INS, depending on the availability of the event on the
 	   platform */
-	EventSet = enum_add_native_events( &num_events, &events );
+	EventSet = enum_add_native_events( &num_events, &events, 1 );
+
 	names =
 		( char ** ) calloc( ( unsigned int ) num_events, sizeof ( char * ) );
 	for ( i = 0; i < num_events; i++ ) {
@@ -78,8 +94,7 @@ main( int argc, char **argv )
 		else
 			names[i] = strdup( name );
 	}
-	values =
-		( long long * )
+	values = ( long long * )
 		calloc( ( unsigned int ) ( num_events * ( num_events + 1 ) ),
 				sizeof ( long long ) );
 	ovt = ( int * ) calloc( ( unsigned int ) num_events, sizeof ( int ) );
@@ -154,6 +169,36 @@ main( int argc, char **argv )
 			printf( "%16d", ovt[i] );
 		printf( "\n" );
 		printf( "-----------------------------------------------\n" );
+	}
+
+	/* validation */
+	for ( j = 0; j < num_events; j++ ) {
+		//printf("Validation: %lld / %d != %d (%lld)\n",
+		//       *( values + j + num_events * (j+1) ) ,
+		//       mythreshold,
+		//       ovt[j],
+		//       *(values+j+num_events*(j+1))/mythreshold);
+		if ( *( values + j + num_events * ( j + 1 ) ) / mythreshold != ovt[j] ) {
+			char error_string[BUFSIZ];
+
+			if ( using_perfmon )
+				test_warn( __FILE__, __LINE__,
+						   "perfmon substrate handles overflow differently than perf_events",
+						   1 );
+			else if ( using_aix )
+				test_warn( __FILE__, __LINE__,
+						   "AIX (pmapi) substrate handles overflow differently than various other substrates",
+						   1 );
+			else {
+				sprintf( error_string,
+						 "Overflow value differs from expected %lld / %d != %d (%lld)",
+						 *( values + j + num_events * ( j + 1 ) ), mythreshold,
+						 ovt[j],
+						 *( values + j +
+							num_events * ( j + 1 ) ) / mythreshold );
+				test_fail( __FILE__, __LINE__, error_string, 1 );
+			}
+		}
 	}
 
 	retval = PAPI_cleanup_eventset( EventSet );

@@ -1,0 +1,33 @@
+diff -up papi-4.1.4/src/ctests/do_loops.c.cov papi-4.1.4/src/ctests/do_loops.c
+--- papi-4.1.4/src/ctests/do_loops.c.cov	2011-09-06 15:43:20.703355680 -0400
++++ papi-4.1.4/src/ctests/do_loops.c	2011-09-06 15:45:12.739320426 -0400
+@@ -301,11 +301,12 @@ _DO_STUFF( void )
+ #ifdef DUMMY_DRIVER
+ int main(int argc, char **argv)
+ {
+-  int i;
+-  if (argc > 1)
+-    if ((i = atoi(argv[1])) < 1) {
+-      i = NUM_FLOPS;
+-    }
++  int i = NUM_FLOPS;
++  if (argc > 1) {
++    int c =  atoi(argv[1]);
++    if (c >= 0)
++      i = c;
++  }
+   do_flops(i);
+   exit(0);
+ }
+diff -up papi-4.1.4/src/ctests/test_utils.c.cov papi-4.1.4/src/ctests/test_utils.c
+--- papi-4.1.4/src/ctests/test_utils.c.cov	2011-09-06 15:47:00.412379072 -0400
++++ papi-4.1.4/src/ctests/test_utils.c	2011-09-06 15:50:11.910447554 -0400
+@@ -890,7 +890,7 @@ init_multiplex( void )
+ 	if ( hw_info == NULL )
+ 		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
+ 
+-	if ( ( strstr( cmpinfo->name, "perfctr.c" ) ) &&
++	if ( ( strstr( cmpinfo->name, "perfctr.c" ) ) && hw_info != NULL && 
+ 		 strcmp( hw_info->model_string, "POWER6" ) == 0 ) {
+ 		retval = PAPI_set_domain( PAPI_DOM_ALL );
+ 		if ( retval != PAPI_OK )

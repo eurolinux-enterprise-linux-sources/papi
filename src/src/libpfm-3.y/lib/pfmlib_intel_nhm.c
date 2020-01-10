@@ -351,6 +351,7 @@ pfm_nhm_init(void)
 		supp = &intel_nhm_support;
 		break;
 	case 26: /* Nehalem */
+	case 30: /* Lynnfield */
 		num_pe = PME_COREI7_EVENT_COUNT;
 		num_unc_pe = PME_COREI7_UNC_EVENT_COUNT;
 		pe = corei7_pe;
@@ -543,6 +544,19 @@ pfm_nhm_dispatch_counters(pfmlib_input_param_t *inp, pfmlib_nhm_input_param_t *p
 		    && e[i].num_masks > 1 && pfm_nhm_check_cmask(e, ne, cntrs ? cntrs+i : NULL)) {
 			DPRINT("events does not support unit mask combination\n");
 				return PFMLIB_ERR_NOASSIGN;
+		}
+		/*
+		 * check for Nehalem-EX specific unit masks */
+		if (ne->pme_flags & PFMLIB_NHM_EX) {
+			int model;
+                	for(j=0; j < e[i].num_masks; j++) {
+				 model = ne->pme_umasks[e[i].unit_masks[j]].pme_umodel;
+				if (model && model != cpu_model) {
+					DPRINT("Unit mask %s is available only on Nehalem-EX processor",
+						ne->pme_umasks[e[i].unit_masks[j]].pme_uname);
+					return PFMLIB_ERR_INVAL;
+				}
+			}
 		}
 		/*
 		 * check event-level single register constraint for uncore fixed
@@ -1523,7 +1537,10 @@ pfm_nhm_is_pebs(pfmlib_event_t *e)
 int
 pfm_nhm_is_uncore(pfmlib_event_t *e)
 {
-	if (e == NULL || e->event >= intel_nhm_support.pme_count)
+	if (PFMLIB_INITIALIZED() == 0)
+		return 0;
+
+	if (e == NULL || e->event >= num_pe)
 		return PFMLIB_ERR_INVAL;
 
 	return !!(get_nhm_entry(e->event)->pme_flags & (PFMLIB_NHM_UNC|PFMLIB_NHM_UNC_FIXED));

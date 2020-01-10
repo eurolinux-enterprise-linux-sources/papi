@@ -4,7 +4,7 @@
 
 /* 
 * File:    papi_data.c
-* CVS:     $Id: papi_data.c,v 1.40 2010/06/07 14:44:30 bsheely Exp $
+* CVS:     $Id: papi_data.c,v 1.41 2010/11/17 18:56:11 terpstra Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    dan terpstra
@@ -473,7 +473,10 @@ const hwi_describe_t _papi_hwi_err[PAPI_NUM_ERRORS] = {
     /*18 */ {PAPI_ENOSUPP, "PAPI_ENOSUPP", "Not supported"},
     /*19 */ {PAPI_ENOIMPL, "PAPI_ENOIMPL", "Not implemented"},
     /*20 */ {PAPI_EBUF, "PAPI_EBUF", "Buffer size exceeded"},
-    /*21 */ {PAPI_EINVAL_DOM, "PAPI_EINVAL_DOM", "EventSet domain is not supported for the operation"}
+    /*21 */ {PAPI_EINVAL_DOM, "PAPI_EINVAL_DOM", "EventSet domain is not supported for the operation"},
+    /*22 */ {PAPI_EATTR, "PAPI_EATTR", "Invalid or missing event attributes"},
+    /*23 */ {PAPI_ECOUNT, "PAPI_ECOUNT", "Too many events or attributes"},
+    /*24 */ {PAPI_ECOMBO, "PAPI_ECOMBO", "Bad combination of features"}
 };
 
 #ifndef NO_LIBPAPI

@@ -1,6 +1,6 @@
 /* 
 * File:    multiplex3_pthreads.c
-* CVS:     $Id: multiplex3_pthreads.c,v 1.45 2010/02/23 22:00:08 bsheely Exp $
+* CVS:     $Id: multiplex3_pthreads.c,v 1.47 2010/08/25 22:08:19 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    John May
@@ -38,7 +38,7 @@ mainloop( int arg )
 	int allvalid;
 	long long *values;
 	int EventSet = PAPI_NULL;
-	int retval, i, j = 2;
+	int retval, i, j = 2, skipped_counters=0;
 	PAPI_event_info_t pset;
 
 	( void ) arg;
@@ -64,7 +64,9 @@ mainloop( int arg )
 				   retval );
 
 	retval = PAPI_set_multiplex( EventSet );
-	if ( retval != PAPI_OK )
+        if ( retval == PAPI_ENOSUPP) {
+	   test_skip(__FILE__, __LINE__, "Multiplex not supported", 1);
+	} else if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", retval );
 
 	if ( ( retval =
@@ -134,6 +136,12 @@ mainloop( int arg )
 						PAPI_remove_event( EventSet, ( int ) pset.event_code );
 					if ( retval == PAPI_OK )
 						printf( "Removed %s\n", pset.symbol );
+				        /* This added because the test */
+				        /* can take a long time if mplexing */
+				        /* is broken and all values are 0   */
+				        skipped_counters++;
+				        if (skipped_counters>MAX_TO_ADD) break;
+
 				}
 			}
 		}

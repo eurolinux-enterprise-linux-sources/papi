@@ -64,7 +64,10 @@ char *argv[];
 				   retval );
 
 	retval = PAPI_set_multiplex( EventSet );
-	if ( retval != PAPI_OK )
+        if (retval == PAPI_ENOSUPP) {
+	   test_skip( __FILE__, __LINE__, "Multiplex not supported", 1 );
+	}
+	else if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex fails \n", retval );
 #endif
 
@@ -134,8 +137,14 @@ char *argv[];
 		for ( i = 0; i < PAPI_MAX_EVENTS; i++ )
 			printf( LLDFMT15, PAPI_values2[i] - PAPI_values1[i] );
 		printf( "\nPAPI value (3-2) is : \n" );
-		for ( i = 0; i < PAPI_MAX_EVENTS; i++ )
-			printf( LLDFMT15, PAPI_values3[i] - PAPI_values2[i] );
+		for ( i = 0; i < PAPI_MAX_EVENTS; i++ ) {
+		  long long diff;
+                  diff = PAPI_values3[i] - PAPI_values2[i];
+		  printf( LLDFMT15, diff);
+		  if (diff<0) {
+		    test_fail( __FILE__, __LINE__, "Multiplexed counter decreased", 1 );
+		  }
+		}
 #endif
 
 		printf( "\n\nVerification:\n" );

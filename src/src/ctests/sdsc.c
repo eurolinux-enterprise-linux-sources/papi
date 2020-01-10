@@ -1,5 +1,5 @@
 /*
- * $Id: sdsc.c,v 1.22 2010/02/22 18:36:04 jagode Exp $
+ * $Id: sdsc.c,v 1.25 2010/09/03 15:44:33 vweaver1 Exp $
  *
  * Test example for multiplex functionality, originally 
  * provided by Timothy Kaiser, SDSC. It was modified to fit the 
@@ -40,10 +40,20 @@ check_values( int eventset, int *events, int nevents, long long *values,
 		if ( !TESTS_QUIET )
 			printf( "%10.3g ", spread[j] );
 		/* Make sure that NaN get counted as errors */
-		if ( spread[j] < MPX_TOLERANCE )
+		if ( spread[j] < MPX_TOLERANCE ) {
 			i--;
-		else if ( refvalues[j] < MINCOUNTS )	/* Neglect inprecise results with low counts */
+		}
+		else if ( refvalues[j] < MINCOUNTS ) {	/* Neglect inprecise results with low counts */
 			i--;
+		}
+                else {
+                  char buff[BUFSIZ];
+
+		  sprintf(buff,"Error on %d, %lf>%lf and %lld>%d\n",j,spread[j],MPX_TOLERANCE,
+			 refvalues[j],MINCOUNTS);
+
+		  test_fail( __FILE__, __LINE__, buff, 1 );
+		}
 	}
 	printf( "\n\n" );
 #if 0
@@ -62,8 +72,7 @@ check_values( int eventset, int *events, int nevents, long long *values,
 	( void ) events;
 #endif
 
-	if ( i )
-		test_fail( __FILE__, __LINE__, "Values outside threshold", i );
+
 }
 
 void
@@ -234,9 +243,14 @@ main( int argc, char **argv )
 		test_fail( __FILE__, __LINE__, "PAPI_assign_eventset_component",
 				   retval );
 
-	if ( ( retval = PAPI_set_multiplex( eventset ) ) )
+	if ( ( retval = PAPI_set_multiplex( eventset ) ) ) {
+	   if ( retval == PAPI_ENOSUPP) {
+	      test_skip(__FILE__, __LINE__, "Multiplex not supported", 1);
+	   }
+	   
 		test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", retval );
-
+	}
+   
 	if ( ( retval = PAPI_add_events( eventset, events, nevents ) ) )
 		test_fail( __FILE__, __LINE__, "PAPI_add_events", retval );
 

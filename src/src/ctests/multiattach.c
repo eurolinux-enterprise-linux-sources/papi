@@ -22,11 +22,16 @@
 #define _LINUX_SOURCE_COMPAT
 #endif
 
+#if defined(__FreeBSD__)
+# define PTRACE_ATTACH PT_ATTACH
+# define PTRACE_CONT PT_CONTINUE
+#endif
+
 int
-wait_for_attach_and_loop( void )
+wait_for_attach_and_loop( int num )
 {
 	kill( getpid(  ), SIGSTOP );
-	do_flops( NUM_FLOPS );
+	do_flops( NUM_FLOPS * num );
 	kill( getpid(  ), SIGSTOP );
 	return ( 0 );
 }
@@ -36,48 +41,56 @@ main( int argc, char **argv )
 {
 	int status, retval, num_tests = 2, tmp;
 	int EventSet1 = PAPI_NULL, EventSet2 = PAPI_NULL;
-	int PAPI_event, mask1;
-	int num_events1;
+	int PAPI_event, PAPI_event2, mask1, mask2;
+	int num_events1, num_events2;
 	long long **values;
 	long long elapsed_us, elapsed_cyc, elapsed_virt_us, elapsed_virt_cyc;
 	char event_name[PAPI_MAX_STR_LEN], add_event_str[PAPI_MAX_STR_LEN];
 	const PAPI_hw_info_t *hw_info;
 	const PAPI_component_info_t *cmpinfo;
 	pid_t pid, pid2;
-
-	pid = fork(  );
-	if ( pid < 0 )
-		test_fail( __FILE__, __LINE__, "fork()", PAPI_ESYS );
-	if ( pid == 0 )
-		exit( wait_for_attach_and_loop(  ) );
-	pid2 = fork(  );
-	if ( pid2 < 0 )
-		test_fail( __FILE__, __LINE__, "fork()", PAPI_ESYS );
-	if ( pid2 == 0 )
-		exit( wait_for_attach_and_loop(  ) );
+	double ratio1,ratio2;
 
 	tests_quiet( argc, argv );	/* Set TESTS_QUIET variable */
 
+	/* Initialize the library */
 	retval = PAPI_library_init( PAPI_VER_CURRENT );
 	if ( retval != PAPI_VER_CURRENT )
-		test_fail( __FILE__, __LINE__, "PAPI_library_init", retval );
+		test_fail_exit( __FILE__, __LINE__, "PAPI_library_init", retval );
 
+	/* get the component info and check if we support attach */
 	if ( ( cmpinfo = PAPI_get_component_info( 0 ) ) == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_component_info", 0 );
+		test_fail_exit( __FILE__, __LINE__, "PAPI_get_component_info", 0 );
 
 	if ( cmpinfo->attach == 0 )
 		test_skip( __FILE__, __LINE__, "Platform does not support attaching",
 				   0 );
 
+	/* get harware info.  Not strictly needed */
 	hw_info = PAPI_get_hardware_info(  );
 	if ( hw_info == NULL )
 		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 0 );
+
+	/* fork off first child */
+	pid = fork(  );
+	if ( pid < 0 )
+		test_fail_exit( __FILE__, __LINE__, "fork()", PAPI_ESYS );
+	if ( pid == 0 )
+		exit( wait_for_attach_and_loop( 1 ) );
+
+	/* fork off second child, does twice as much */
+	pid2 = fork(  );
+	if ( pid2 < 0 )
+		test_fail_exit( __FILE__, __LINE__, "fork()", PAPI_ESYS );
+	if ( pid2 == 0 )
+		exit( wait_for_attach_and_loop( 2 ) );
+
 
 	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
 	   PAPI_TOT_INS, depending on the availability of the event on the
 	   platform */
 	EventSet1 = add_two_events( &num_events1, &PAPI_event, hw_info, &mask1 );
-	EventSet2 = add_two_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+	EventSet2 = add_two_events( &num_events2, &PAPI_event2, hw_info, &mask2 );
 
 	if ( cmpinfo->attach_must_ptrace ) {
 		if ( ptrace( PTRACE_ATTACH, pid, NULL, NULL ) == -1 ) {
@@ -107,11 +120,11 @@ main( int argc, char **argv )
 
 	retval = PAPI_attach( EventSet1, ( unsigned long ) pid );
 	if ( retval != PAPI_OK )
-		test_fail( __FILE__, __LINE__, "PAPI_attach", retval );
+		test_fail( __FILE__, __LINE__, "PAPI_attach", retval ); 
 
 	retval = PAPI_attach( EventSet2, ( unsigned long ) pid2 );
 	if ( retval != PAPI_OK )
-		test_fail( __FILE__, __LINE__, "PAPI_attach", retval );
+		test_fail( __FILE__, __LINE__, "PAPI_attach", retval ); 
 
 	retval = PAPI_event_code_to_name( PAPI_event, event_name );
 	if ( retval != PAPI_OK )
@@ -167,10 +180,12 @@ main( int argc, char **argv )
 		}
 	}
 
+	/* start first child */
 	retval = PAPI_start( EventSet1 );
 	if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_start", retval );
 
+	/* start second child */
 	retval = PAPI_start( EventSet2 );
 	if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_start", retval );
@@ -220,18 +235,20 @@ main( int argc, char **argv )
 
 	elapsed_cyc = PAPI_get_real_cyc(  ) - elapsed_cyc;
 
+	/* stop first child */
 	retval = PAPI_stop( EventSet1, values[0] );
 	if ( retval != PAPI_OK )
 		printf( "Warning: PAPI_stop returned error %d, probably ok.\n",
 				retval );
 
+	/* stop second child */
 	retval = PAPI_stop( EventSet2, values[1] );
 	if ( retval != PAPI_OK )
 		printf( "Warning: PAPI_stop returned error %d, probably ok.\n",
 				retval );
 
 	remove_test_events( &EventSet1, mask1 );
-	remove_test_events( &EventSet2, mask1 );
+	remove_test_events( &EventSet2, mask2 );
 
 	if ( cmpinfo->attach_must_ptrace ) {
 		if ( ptrace( PTRACE_CONT, pid, NULL, NULL ) == -1 ) {
@@ -260,9 +277,9 @@ main( int argc, char **argv )
 		test_fail( __FILE__, __LINE__,
 				   "Child process didn't return true to WIFEXITED", 0 );
 
-	/* This code isn't necessary as we know the child has exited,
-	   it *may* return an error if the substrate so chooses. You should use read() instead. */
-
+	/* This code isn't necessary as we know the child has exited, */
+	/* it *may* return an error if the substrate so chooses. You  */
+        /* should use read() instead. */
 
 	printf( "Test case: multiple 3rd party attach start, stop.\n" );
 	printf( "-----------------------------------------------\n" );
@@ -293,7 +310,28 @@ main( int argc, char **argv )
 	printf
 		( "-------------------------------------------------------------------------\n" );
 
-	printf( "Verification: none\n" );
+	printf("Verification: pid %d results should be twice pid %d\n",pid2,pid );
+
+	ratio1=(double)values[1][0]/(double)values[0][0];
+	ratio2=(double)values[1][1]/(double)values[0][1];
+
+	printf("\t%lld/%lld = %lf\n",values[1][0],values[0][0],ratio1);
+	
+
+	if ((ratio1 >2.1 ) || (ratio1 < 1.9)) {
+	  printf("Known issue!  Ratio out of range, should be ~2.0 not %lf\n",ratio1);
+	  test_warn( __FILE__, __LINE__,
+		    "Known issue: Counter ratio not two", 0 );
+	}
+
+
+	printf("\t%lld/%lld = %lf\n",values[1][1],values[0][1],ratio2);
+
+	if ((ratio2 >2.1 ) || (ratio2 < 1.9)) {
+	  printf("Known issue!  Ratio out of range, should be ~2.0, not %lf\n",ratio2);
+	  test_warn( __FILE__, __LINE__,
+		    "Known issue: Counter ratio not two", 0 );
+	}
 
 	test_pass( __FILE__, values, num_tests );
 	exit( 1 );

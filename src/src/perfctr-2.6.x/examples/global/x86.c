@@ -1,4 +1,4 @@
-/* $Id: x86.c,v 1.2.2.10 2010/05/08 13:36:14 mikpe Exp $
+/* $Id: x86.c,v 1.2.2.11 2010/11/07 19:46:06 mikpe Exp $
  * x86-specific code.
  *
  * Copyright (C) 2000-2010  Mikael Pettersson
@@ -59,6 +59,7 @@ void setup_control(const struct perfctr_info *info,
 	evntsel0 = 0xC0 | (3 << 16) | (1 << 22);
 	break;
       case PERFCTR_X86_INTEL_NHLM:
+      case PERFCTR_X86_INTEL_WSTMR:
 	/* FP_COMP_OPS_EXE.ANY, any CPL, Enable */
 	evntsel0 = 0x10 | (0xFF << 8) | (3 << 16) | (1 << 22);
 	break;

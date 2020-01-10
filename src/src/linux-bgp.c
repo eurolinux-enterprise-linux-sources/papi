@@ -99,7 +99,7 @@ _papi_hwd_unlock( int lock )
  *        PAPI_OK.  Commented out code is carry-over from BG/L.
  */
 int
-_bgp_update_shlib_info(  )
+_bgp_update_shlib_info( papi_mdi_t *mdi )
 {
 //  char fname[PAPI_HUGE_STR_LEN];
 //  PAPI_address_map_t *tmp, *tmp2;
@@ -241,7 +241,7 @@ _bgp_update_shlib_info(  )
  * Initialize system information structure
  */
 int
-_bgp_get_system_info( void )
+_bgp_get_system_info( papi_mdi_t *mdi )
 {
 	_BGP_Personality_t bgp;
 	int tmp;
@@ -252,7 +252,7 @@ _bgp_get_system_info( void )
 	//        and the pid is not filled in the system_info structure.
 	//        Basically, _bgp_update_shlib_info() simply returns
 	//        with PAPI_OK
-	_bgp_update_shlib_info(  );
+	_bgp_update_shlib_info( &_papi_hwi_system_info  );
 
 	/* Hardware info */
 	if ( ( tmp = Kernel_GetPersonality( &bgp, sizeof bgp ) ) ) {
@@ -311,7 +311,7 @@ _bgp_get_system_info( void )
  * Assign the global native and preset table pointers, find the native
  * table's size in memory and then call the preset setup routine.
  */
-inline_static int
+static inline int
 setup_bgp_presets( int cpu_type )
 {
 	switch ( cpu_type ) {
@@ -427,7 +427,7 @@ _bgp_init_global( void )
 	 * Fill in what we can of the papi_system_info
 	 */
 	SUBDBG( "Before _bgp_get_system_info()...\n" );
-	retval = _bgp_get_system_info(  );
+	retval = _bgp_get_system_info( &_papi_hwi_system_info );
 	SUBDBG( "After _bgp_get_system_info(), retval=%d...\n", retval );
 	if ( retval != PAPI_OK )
 		return ( retval );

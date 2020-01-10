@@ -1,20 +1,14 @@
 Summary: Performance Application Programming Interface
 Name: papi
-Version: 4.1.0
-Release: 5%{?dist}
+Version: 4.1.3
+Release: 3%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
 Source0: http://icl.cs.utk.edu/projects/papi/downloads/%{name}-%{version}.tar.gz
-Patch1: papi-westmere.patch
-Patch21: papi-amd1.patch
-Patch22: papi-amd2.patch
-Patch23: papi-amd3.patch
-Patch24: papi-amd4.patch
-Patch25: papi-amd5.patch
-Patch26: papi-amd6.patch
-Patch27: papi-bz692668.patch
-Patch28: papi-bz635667.patch
+Patch1: papi-cflags.patch
+Patch2: papi-cov1.patch
+Patch3: papi-cov2.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires: ncurses-devel
 BuildRequires: gcc-gfortran
@@ -38,15 +32,9 @@ that uses PAPI.
 
 %prep
 %setup -q
-%patch1 -p0 -b .westmere
-%patch21 -p1
-%patch22 -p1
-%patch23 -p1
-%patch24 -p1
-%patch25 -p1
-%patch26 -p1
-%patch27 -p1
-%patch28 -p1
+%patch1 -p1 -b .cflags
+%patch2 -p1 -b .cov1
+%patch3 -p1 -b .cov2
 
 %build
 cd src
@@ -90,6 +78,15 @@ rm -rf $RPM_BUILD_ROOT
 %doc %{_mandir}/man1/*
 
 %changelog
+* Thu Sep 08 2011 William Cohen <wcohen@redhat.com> - 4.1.3-3
+- Fixes for problems found in static analysis. [736006]
+
+* Thu Aug 25 2011 William Cohen <wcohen@redhat.com> - 4.1.3-2
+- Correct CFLAGS use in build.  [705893]
+
+* Thu Aug 25 2011 William Cohen <wcohen@redhat.com> - 4.1.3-1
+- Rebase to 4.1.3. [705893]
+
 * Thu Apr 20 2011 William Cohen <wcohen@redhat.com> - 4.1.0-5
 - Correct AMD family 15H events. [635667]
 

@@ -4,7 +4,7 @@
 
 /** 
 * @file    papi.h
-* CVS:     $Id: papi.h,v 1.208 2010/06/18 15:35:42 ralph Exp $
+* CVS:     $Id: papi.h,v 1.216 2011/05/05 15:59:41 terpstra Exp $
 * @author  Philip Mucci
 *          mucci@cs.utk.edu
 * @author  dan terpstra
@@ -95,7 +95,7 @@
 
 /* This is the official PAPI version */
 /* The final digit represents the patch count */
-#define PAPI_VERSION  			PAPI_VERSION_NUMBER(4,1,0,0)
+#define PAPI_VERSION  			PAPI_VERSION_NUMBER(4,1,3,0)
 #define PAPI_VER_CURRENT 		(PAPI_VERSION & 0xffff0000)
 
 #ifdef __cplusplus
@@ -139,7 +139,10 @@ failure.
 #define PAPI_ENOIMPL    -19    /**< Not implemented */
 #define PAPI_EBUF       -20    /**< Buffer size exceeded */
 #define PAPI_EINVAL_DOM -21    /**< EventSet domain is not supported for the operation */
-#define PAPI_NUM_ERRORS	 22    /**< Number of error messages specified in this API */
+#define PAPI_EATTR		-22    /**< Invalid or missing event attributes */
+#define PAPI_ECOUNT		-23    /**< Too many events or attributes */
+#define PAPI_ECOMBO		-24    /**< Bad combination of features */
+#define PAPI_NUM_ERRORS	 25    /**< Number of error messages specified in this API */
 
 #define PAPI_NOT_INITED		0
 #define PAPI_LOW_LEVEL_INITED 	1       /* Low level has called library init */
@@ -254,6 +257,7 @@ All of the functions in the PerfAPI should use the following set of constants.
 #define PAPI_PROFILING    0x20  /**< EventSet has profiling enabled */
 #define PAPI_MULTIPLEXING 0x40  /**< EventSet has multiplexing enabled */
 #define PAPI_ATTACHED	  0x80  /**< EventSet is attached to another thread/process */
+#define PAPI_CPU_ATTACHED 0x100 /**< EventSet is attached to a specific cpu (not counting thread of execution) */
 /* @} */
 
 /** @internal 
@@ -327,6 +331,9 @@ All of the functions in the PerfAPI should use the following set of constants.
 #define PAPI_INSTR_ADDRESS  24      /**< Option to set instruction address range restriction */
 #define PAPI_DEF_ITIMER		25		/**< Option to set the type of itimer used in both software multiplexing, overflowing and profiling */
 #define PAPI_DEF_ITIMER_NS	26		/**< Multiplexing/overflowing interval in ns, same as PAPI_DEF_MPX_NS */
+/* Currently the following options are only available on systems using the perf_events substrate within papi */
+#define PAPI_CPU_ATTACH		27      /**< Specify a cpu number the event set should be tied to */
+#define PAPI_INHERIT		28      /**< Option to set counter inheritance flag */
 
 #define PAPI_INIT_SLOTS    64     /*Number of initialized slots in
                                    DynamicArray of EventSets */
@@ -466,6 +473,7 @@ read the documentation carefully.  */
 
 /** */
    typedef struct _papi_inherit_option {
+      int eventset;
       int inherit;
    } PAPI_inherit_option_t;
 
@@ -513,7 +521,8 @@ read the documentation carefully.  */
      int hardware_intr_sig;       /**< Signal used by hardware to deliver PMC events */
      int clock_ticks;             /**< clock ticks per second */
      int opcode_match_width;      /**< Width of opcode matcher if exists, 0 if not */
-     int reserved[2];             /* */
+     int os_version;              /**< Currently running kernel version */
+     int reserved[1];             /* */
      unsigned int hardware_intr:1;         /**< hw overflow intr, does not need to be emulated in software*/
      unsigned int precise_intr:1;          /**< Performance interrupts happen precisely */
      unsigned int posix1b_timers:1;        /**< Using POSIX 1b interval timers (timer_create) instead of setitimer */
@@ -526,6 +535,8 @@ read the documentation carefully.  */
      unsigned int fast_virtual_timer:1;    /**< Supports a fast virtual timer */
      unsigned int attach:1;                /**< Supports attach */
      unsigned int attach_must_ptrace:1;	   /**< Attach must first ptrace and stop the thread/process*/
+     unsigned int cpu:1;                   /**< Supports specifying cpu number to use with event set */
+     unsigned int inherit:1;               /**< Supports child processes inheriting parents counters */
      unsigned int edge_detect:1;           /**< Supports edge detection on events */
      unsigned int invert:1;                /**< Supports invert detection on events */
      unsigned int profile_ear:1;      	   /**< Supports data/instr/tlb miss address sampling */
@@ -534,7 +545,7 @@ read the documentation carefully.  */
      unsigned int cntr_IEAR_events:1;      /**< counters support instr event addr register */
      unsigned int cntr_DEAR_events:1;      /**< counters support data event addr register */
      unsigned int cntr_OPCM_events:1;      /**< counter events support opcode matching */
-     unsigned int reserved_bits:12;
+     unsigned int reserved_bits:10;
    } PAPI_component_info_t;
 
 /** */
@@ -659,6 +670,12 @@ read the documentation carefully.  */
    } PAPI_attach_option_t;
 
 /** */
+      typedef struct _papi_cpu_option {
+         int eventset;
+         unsigned int cpu_num;
+      } PAPI_cpu_option_t;
+
+/** */
    typedef struct _papi_multiplex_option {
       int eventset;
       int ns;
@@ -682,14 +699,13 @@ read the documentation carefully.  */
 	{
 		PAPI_preload_info_t preload;
 		PAPI_debug_option_t debug;
-#if 0
 		PAPI_inherit_option_t inherit;
-#endif
 		PAPI_granularity_option_t granularity;
 		PAPI_granularity_option_t defgranularity;
 		PAPI_domain_option_t domain;
 		PAPI_domain_option_t defdomain;
 		PAPI_attach_option_t attach;
+		PAPI_cpu_option_t cpu;
 		PAPI_multiplex_option_t multiplex;
 		PAPI_itimer_option_t itimer;
 		PAPI_hw_info_t *hw_info;

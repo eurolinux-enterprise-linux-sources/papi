@@ -3,7 +3,7 @@
 /****************************/
 /* 
 * File:    freebsd-libpmc.c
-* CVS:     $Id: freebsd.h,v 1.6 2010/05/03 17:27:57 ralph Exp $
+* CVS:     $Id: freebsd.h,v 1.7 2011/02/23 22:59:07 vweaver1 Exp $
 * Author:  Kevin London
 *          london@cs.utk.edu
 * Mods:    Harald Servat
@@ -33,8 +33,6 @@
 #define MY_VECTOR			_papi_freebsd_vector
 #define MAX_COUNTERS		HWPMC_NUM_COUNTERS
 #define MAX_COUNTER_TERMS	MAX_COUNTERS
-
-#define inline_static inline static
 
 #undef hwd_siginfo_t
 #undef hwd_register_t

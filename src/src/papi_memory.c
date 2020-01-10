@@ -1,6 +1,6 @@
 /**
  * @file    papi_memory.c
- * CVS:     $Id: papi_memory.c,v 1.23 2010/04/05 20:55:51 bsheely Exp $
+ * CVS:     $Id: papi_memory.c,v 1.24 2011/05/06 14:29:18 ralph Exp $
  * @author  Kevin London
  *          london@cs.utk.edu
  * PAPI memory allocation provides for checking and maintenance of all memory
@@ -476,8 +476,9 @@ _papi_mem_check_all_overflow(  )
 			fnd++;
 	}
 
-	if ( fnd )
+	if ( fnd ) {
 		LEAKDBG( "%d Total Buffer overflows detected!\n", fnd );
+	}
 #endif
 	return ( fnd );
 }

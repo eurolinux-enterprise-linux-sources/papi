@@ -1,6 +1,7 @@
 PAPIVER=4
 PAPIREV=1
-PAPIAGE=0
+PAPIAGE=3
+PAPIINC=0
 PREFIX    = @prefix@
 prefix    = $(PREFIX)
 exec_prefix = $(EPREFIX)
@@ -79,6 +80,7 @@ TESTS = @tests@
 TOPTFLAGS = @TOPTFLAGS@
 UTIL_TARGETS = @UTIL_TARGETS@
 VERSION = @VERSION@
+LDL = @LDL@
 
 include $(FILENAME)
 

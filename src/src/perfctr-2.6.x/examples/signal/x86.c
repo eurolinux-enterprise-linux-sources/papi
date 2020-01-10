@@ -1,4 +1,4 @@
-/* $Id: x86.c,v 1.3.2.10 2010/05/08 13:36:15 mikpe Exp $
+/* $Id: x86.c,v 1.3.2.11 2010/11/07 19:46:06 mikpe Exp $
  * x86-specific code.
  *
  * Copyright (C) 2001-2010  Mikael Pettersson
@@ -69,6 +69,7 @@ void do_setup(const struct perfctr_info *info,
 	evntsel1 = 0xC4 | (1 << 16) | (1 << 22) | (1 << 20);
 	break;
       case PERFCTR_X86_INTEL_NHLM:
+      case PERFCTR_X86_INTEL_WSTMR:
 	/* FP_COMP_OPS_EXE.ANY, USR, Enable, INT */
 	evntsel0 = 0x10 | (0xFF << 8) | (1 << 16) | (1 << 22) | (1 << 20);
 	/* BR_INST_RETIRED.ALL, USR, Enable, INT */

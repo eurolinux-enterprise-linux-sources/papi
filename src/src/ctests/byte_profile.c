@@ -1,6 +1,6 @@
 /* 
 * File:    byte_profile.c
-* CVS:     $Id: byte_profile.c,v 1.21 2010/02/22 18:36:03 jagode Exp $
+* CVS:     $Id: byte_profile.c,v 1.22 2010/08/26 22:03:33 vweaver1 Exp $
 * Author:  Dan Terpstra
 *          terpstra@cs.utk.edu
 * Mods:    Maynard Johnson
@@ -148,8 +148,16 @@ do_profile( caddr_t start, unsigned long plength, unsigned scale, int thresh,
 		if ( ( retval =
 			   PAPI_profil( profbuf[i], ( unsigned int ) blength, start, scale,
 							EventSet, events[i], thresh,
-							PAPI_PROFIL_POSIX | bucket ) ) != PAPI_OK )
+							PAPI_PROFIL_POSIX | bucket ) ) != PAPI_OK ) {
+	           if (retval == PAPI_EINVAL) {
+		      test_warn( __FILE__, __LINE__, "Trying to profile with derived event", 1);
+		      num_events=i;
+		      break;
+		   }
+                   else {
 			test_fail( __FILE__, __LINE__, "PAPI_profil", retval );
+		   }
+		}
 	}
 
 	if ( ( retval = PAPI_start( EventSet ) ) != PAPI_OK )
