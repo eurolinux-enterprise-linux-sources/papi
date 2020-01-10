@@ -1,0 +1,68 @@
+This patch modifies AMD family check macros in preparation of patches
+for family 15h support.
+
+Signed-off-by: Robert Richter <robert.richter@amd.com>
+---
+ src/libpfm-3.y/lib/pfmlib_amd64.c      |   15 +++++++--------
+ src/libpfm-3.y/lib/pfmlib_amd64_priv.h |    2 --
+ 2 files changed, 7 insertions(+), 10 deletions(-)
+
+diff --git a/src/libpfm-3.y/lib/pfmlib_amd64.c b/src/libpfm-3.y/lib/pfmlib_amd64.c
+index 69d9921..76a9928 100644
+--- a/src/libpfm-3.y/lib/pfmlib_amd64.c
++++ b/src/libpfm-3.y/lib/pfmlib_amd64.c
+@@ -104,8 +104,8 @@ pfm_pmu_support_t amd64_support;
+ #define amd64_model	  amd64_pmu.model
+ #define amd64_stepping	  amd64_pmu.stepping
+ 
+-#define IS_FAMILY_10H() (amd64_pmu.revision >= AMD64_FAM10H)
+-#define HAS_IBS() IS_FAMILY_10H()
++#define IS_FAMILY_10H()	(amd64_pmu.family == 0x10)
++#define HAS_IBS()	(amd64_pmu.family >= 0x10)
+ 
+ static amd64_rev_t
+ amd64_get_revision(int family, int model, int stepping)
+@@ -188,17 +188,16 @@ pfm_amd64_setup(amd64_rev_t revision)
+ 	amd64_support.pmc_count	= PMU_AMD64_NUM_COUNTERS;
+ 	amd64_support.pmd_count	= PMU_AMD64_NUM_COUNTERS;
+ 
+-	/* K7 */
+-        if (amd64_pmu.revision == AMD64_K7) {
++	switch (amd64_pmu.family) {
++	case 6:
++		/* K7 */
+ 		amd64_pmu.events	= amd64_k7_table.events;
+ 		amd64_support.pme_count	= amd64_k7_table.num;
+ 		amd64_pmu.cpu_clks	= amd64_k7_table.cpu_clks;
+ 		amd64_pmu.ret_inst	= amd64_k7_table.ret_inst;
+ 		return;
+-	}
+-
+-	/* Barcelona */
+-	if (IS_FAMILY_10H()) {
++	case 0x10:
++		/* Family 10h */
+ 		amd64_pmu.events	= amd64_fam10h_table.events;
+ 		amd64_support.pme_count	= amd64_fam10h_table.num;
+ 		amd64_pmu.cpu_clks	= amd64_fam10h_table.cpu_clks;
+diff --git a/src/libpfm-3.y/lib/pfmlib_amd64_priv.h b/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
+index 052a230..eeb4008 100644
+--- a/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
++++ b/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
+@@ -54,8 +54,6 @@ typedef struct {
+ 	unsigned int		pme_flags;	/* flags */
+ } pme_amd64_entry_t;
+ 
+-#define AMD64_FAM10H AMD64_FAM10H_REV_B
+-
+ typedef enum {
+ 	AMD64_CPU_UN,
+ 	AMD64_K7,
+-- 
+1.7.3.4
+
+
+_______________________________________________
+Perfapi-devel mailing list
+Perfapi-devel@eecs.utk.edu
+http://lists.eecs.utk.edu/mailman/listinfo/perfapi-devel

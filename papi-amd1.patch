@@ -1,0 +1,96 @@
+This patch adds supprot for AMD Family 10h RevE cpus. There are no new
+events/unitmasks compared to RevD. It basically implements CPU
+detection that enables the RevD pmu bahavior also for RevE systems.
+
+Signed-off-by: Robert Richter <robert.richter@amd.com>
+---
+ src/libpfm-3.y/lib/pfmlib_amd64.c      |   18 +++++++++---------
+ src/libpfm-3.y/lib/pfmlib_amd64_priv.h |    4 +++-
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/src/libpfm-3.y/lib/pfmlib_amd64.c b/src/libpfm-3.y/lib/pfmlib_amd64.c
+index 7b4c2e5..69d9921 100644
+--- a/src/libpfm-3.y/lib/pfmlib_amd64.c
++++ b/src/libpfm-3.y/lib/pfmlib_amd64.c
+@@ -110,10 +110,10 @@ pfm_pmu_support_t amd64_support;
+ static amd64_rev_t
+ amd64_get_revision(int family, int model, int stepping)
+ {
+-	if (family == 6)
++	switch (family) {
++	case 6:
+ 		return AMD64_K7;
+-
+-	if (family == 15) {
++	case 0x0f:
+ 		switch (model >> 4) {
+ 		case 0:
+ 			if (model == 5 && stepping < 2)
+@@ -134,10 +134,9 @@ amd64_get_revision(int family, int model, int stepping)
+ 		case 7:
+ 		case 8:
+ 			return AMD64_K8_REV_G;
+-		default:
+-			return AMD64_K8_REV_B;
+ 		}
+-	} else if (family == 16) {
++		return AMD64_K8_REV_B;
++	case 0x10:
+ 		switch (model) {
+ 		case 4:
+ 		case 5:
+@@ -146,9 +145,10 @@ amd64_get_revision(int family, int model, int stepping)
+ 		case 8:
+ 		case 9:
+ 			return AMD64_FAM10H_REV_D;
+-		default:
+-			return AMD64_FAM10H_REV_B;
++		case 10:
++			return AMD64_FAM10H_REV_E;
+ 		}
++		return AMD64_FAM10H_REV_B;
+ 	}
+ 
+ 	return AMD64_CPU_UN;
+@@ -231,7 +231,7 @@ pfm_amd64_detect(void)
+ 		amd64_family += (a >> 20) & 0x000000ff; // Extended family
+ 		amd64_model  |= (a >> 12) & 0x000000f0; // Extended model
+ 	}
+-	amd64_stepping= a & 0x0000000f;  // bits  3 - 0
++	amd64_stepping = a & 0x0000000f;  // bits  3 - 0
+ 
+ 	amd64_revision = amd64_get_revision(amd64_family, amd64_model, amd64_stepping);
+ 
+diff --git a/src/libpfm-3.y/lib/pfmlib_amd64_priv.h b/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
+index 7b300f0..052a230 100644
+--- a/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
++++ b/src/libpfm-3.y/lib/pfmlib_amd64_priv.h
+@@ -68,10 +68,11 @@ typedef enum {
+ 	AMD64_FAM10H_REV_B,
+ 	AMD64_FAM10H_REV_C,
+ 	AMD64_FAM10H_REV_D,
++	AMD64_FAM10H_REV_E,
+ } amd64_rev_t;
+ 
+ static const char *amd64_rev_strs[]= {
+-	"?", "?", "B", "C", "D", "E", "F", "G", "B", "C", "D"
++	"?", "?", "B", "C", "D", "E", "F", "G", "B", "C", "D", "E"
+ };
+ 
+ static const char *amd64_cpu_strs[] = {
+@@ -86,6 +87,7 @@ static const char *amd64_cpu_strs[] = {
+ 	"AMD64 (Family 10h RevB, Barcelona)",
+ 	"AMD64 (Family 10h RevC, Shanghai)",
+ 	"AMD64 (Family 10h RevD, Istanbul)",
++	"AMD64 (Family 10h RevE)",
+ };
+ 
+ /* 
+-- 
+1.7.3.4
+
+
+_______________________________________________
+Perfapi-devel mailing list
+Perfapi-devel@eecs.utk.edu
+http://lists.eecs.utk.edu/mailman/listinfo/perfapi-devel

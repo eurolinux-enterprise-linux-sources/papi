@@ -1,3 +1,4 @@
-# ELS - Enterprise Linux/EuroLinux Sources - papi 
+# ELS - Enterprise Linux/EuroLinux Sources - papi
+ 
 ## Usage:
-  Checkout branch or tag.
+  Checkout branch or tag. Use `make sources` to recreate  SOURCE0 archive.

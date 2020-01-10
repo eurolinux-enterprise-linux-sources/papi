@@ -1,0 +1,116 @@
+From aa6769522a719bfe3741da875e029836477fdfb9 Mon Sep 17 00:00:00 2001
+From: Robert Richter <robert.richter@amd.com>
+Date: Wed, 20 Apr 2011 15:15:32 +0200
+Subject: [PATCH 1/2] libpfm3: Don't report unsupported AMD family 15h northbridge events
+
+There is no kernel support for AMD family 15h northbridge events,
+disabling them in libpfm3 to not report them as available native
+events.
+
+Signed-off-by: Robert Richter <robert.richter@amd.com>
+---
+ src/libpfm-3.y/lib/amd64_events_fam15h.h |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/src/libpfm-3.y/lib/amd64_events_fam15h.h b/src/libpfm-3.y/lib/amd64_events_fam15h.h
+index 20c7140..8ecf6d9 100644
+--- a/src/libpfm-3.y/lib/amd64_events_fam15h.h
++++ b/src/libpfm-3.y/lib/amd64_events_fam15h.h
+@@ -1065,6 +1065,8 @@ static pme_amd64_entry_t amd64_fam15h_pe[]={
+ 		},
+ 	 },
+ 	},
++/* Northbridge events (.pme_code & 0x0E0) not yet supported by the kernel */
++#if 0
+ /* 78 */{.pme_name = "DRAM_ACCESSES",
+ 	.pme_code  = 0xE0,
+ 	.pme_desc  = "DRAM Accesses",
+@@ -2241,6 +2243,7 @@ static pme_amd64_entry_t amd64_fam15h_pe[]={
+ 		},
+ 	 },
+ 	},
++#endif
+ };
+ 
+ #define PME_AMD64_FAM15H_EVENT_COUNT		(sizeof(amd64_fam15h_pe)/sizeof(pme_amd64_entry_t))
+-- 
+1.7.3.4
+
+From d6a40d9f884821011f7005539145df8c6a7d4fd6 Mon Sep 17 00:00:00 2001
+From: Robert Richter <robert.richter@amd.com>
+Date: Tue, 19 Apr 2011 18:34:19 +0200
+Subject: [PATCH 2/2] libpfm3: Fix family check for AMD architectural PMU
+
+AMD architectural PMU could not been detected for family 15h as there
+was a strict check for AMD family 10h. Enabling it now for all
+families from 10h.
+
+Signed-off-by: Robert Richter <robert.richter@amd.com>
+---
+ src/libpfm-3.y/include/perfmon/pfmlib_amd64.h |    6 +++---
+ src/libpfm-3.y/lib/pfmlib_amd64.c             |   10 +++++-----
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/src/libpfm-3.y/include/perfmon/pfmlib_amd64.h b/src/libpfm-3.y/include/perfmon/pfmlib_amd64.h
+index bee4821..b727891 100644
+--- a/src/libpfm-3.y/include/perfmon/pfmlib_amd64.h
++++ b/src/libpfm-3.y/include/perfmon/pfmlib_amd64.h
+@@ -60,10 +60,10 @@ typedef union {
+ 		uint64_t sel_en:1;		/* enable */
+ 		uint64_t sel_inv:1;		/* invert counter mask */
+ 		uint64_t sel_cnt_mask:8;	/* counter mask */
+-		uint64_t sel_event_mask2:4;	/* 10h only: event mask [11:8] */
++		uint64_t sel_event_mask2:4;	/* from 10h: event mask [11:8] */
+ 		uint64_t sel_res2:4;		/* reserved */
+-		uint64_t sel_guest:1;		/* 10h only: guest only counter */
+-		uint64_t sel_host:1;		/* 10h only: host only counter */
++		uint64_t sel_guest:1;		/* from 10h: guest only counter */
++		uint64_t sel_host:1;		/* from 10h: host only counter */
+ 		uint64_t sel_res3:22;		/* reserved */
+ 	} perfsel;
+ } pfm_amd64_sel_reg_t; /* MSR 0xc001000-0xc001003 */
+diff --git a/src/libpfm-3.y/lib/pfmlib_amd64.c b/src/libpfm-3.y/lib/pfmlib_amd64.c
+index 0194269..6e86ad4 100644
+--- a/src/libpfm-3.y/lib/pfmlib_amd64.c
++++ b/src/libpfm-3.y/lib/pfmlib_amd64.c
+@@ -51,7 +51,7 @@
+ #define sel_guest	perfsel.sel_guest
+ #define sel_host	perfsel.sel_host
+ 
+-#define IS_FAM10H_ONLY(reg) \
++#define CHECK_AMD_ARCH(reg) \
+ 	((reg).sel_event_mask2 || (reg).sel_guest || (reg).sel_host)
+ 
+ #define PFMLIB_AMD64_HAS_COMBO(_e) \
+@@ -106,8 +106,8 @@ pfm_pmu_support_t amd64_support;
+ #define amd64_model	  amd64_pmu.model
+ #define amd64_stepping	  amd64_pmu.stepping
+ 
+-#define IS_FAMILY_10H()	(amd64_pmu.family == 0x10)
+-#define HAS_IBS()	(amd64_pmu.family >= 0x10)
++/* AMD architectural pmu features starts with family 10h */
++#define IS_AMD_ARCH()	(amd64_pmu.family >= 0x10)
+ 
+ static amd64_rev_t
+ amd64_get_revision(int family, int model, int stepping)
+@@ -522,7 +522,7 @@ pfm_amd64_dispatch_counters(pfmlib_input_param_t *inp, pfmlib_amd64_input_param_
+                        }
+                        pc[j].reg_num   = assign[j];
+ 
+-                       if ((IS_FAM10H_ONLY(reg)) && !IS_FAMILY_10H())
++			if ((CHECK_AMD_ARCH(reg)) && !IS_AMD_ARCH())
+                                return PFMLIB_ERR_BADHOST;
+ 
+ 			if (amd64_support.num_cnt == PMU_AMD64_NUM_COUNTERS_F15H) {
+@@ -577,7 +577,7 @@ static int pfm_amd64_dispatch_ibs(pfmlib_input_param_t *inp,
+ 	if (!inp_mod || !outp || !outp_mod)
+ 		return PFMLIB_ERR_INVAL;
+ 
+-	if (!HAS_IBS())
++	if (!IS_AMD_ARCH())
+ 		return PFMLIB_ERR_BADHOST;
+ 
+ 	/* IBS fetch profiling */
+-- 
+1.7.3.4
+
