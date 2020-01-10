@@ -1,11 +1,11 @@
 %bcond_without bundled_libpfm
 %global papi4_version 4.1.3
 %define papi_dirname papi-5.1.1
-%define papidir %{_libdir}/%{papi_dirname}
+%global papidir %{_libdir}/%{papi_dirname}
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.1.1
-Release: 5%{?dist}
+Release: 11%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -16,9 +16,15 @@ Patch100: papi4-cflags.patch
 Patch101: papi4-cov1.patch
 Patch102: papi4-cov2.patch
 Patch103: papi4-make-parallel.patch
+Patch110: papi4-pkgconfig.patch
 Patch200: papi-testsuite1.patch
 Patch300: papi-shlib.patch
+Patch400: papi-libpfm4-update.patch
+Patch401: papi-events-csv.patch
+Patch410: papi5-pkgconfig.patch
+Patch411: papi5-haswell-l1tcm.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
+BuildRequires: autoconf
 BuildRequires: ncurses-devel
 BuildRequires: gcc-gfortran
 BuildRequires: kernel-headers >= 2.6.32
@@ -43,6 +49,7 @@ running programs.
 Summary: Header files for the compiling programs with PAPI
 Group: Development/System
 Requires: papi = %{version}-%{release}
+Requires: pkgconfig
 %description devel
 PAPI-devel includes the C header files that specify the PAPI user-space
 libraries and interfaces. This is required for rebuilding any program
@@ -75,10 +82,15 @@ pushd ../papi-%{papi4_version}
 %patch101 -p1 -b .cov1
 %patch102 -p1 -b .cov2
 %patch103 -p1 -b .par
+%patch110 -p1
 popd
 
 %patch200 -p1
 %patch300 -p1
+%patch400 -p1
+%patch401 -p1
+%patch410 -p1
+%patch411 -p1
 
 %build
 %if %{without bundled_libpfm}
@@ -86,7 +98,13 @@ popd
 %global libpfm_config --with-pfm-incdir=%{_includedir} --with-pfm-libdir=%{_libdir}
 %endif
 
+%define save_prefix %{_prefix}
+%global _prefix %{papidir}/usr
+%global _mandir %{_datadir}/man
+%global _libdir %{_exec_prefix}/lib
+
 cd src
+autoconf --force
 %configure --with-perf-events \
 %{?libpfm_config} \
 --with-static-lib=yes --with-shared-lib=yes --with-shlib \
@@ -107,8 +125,13 @@ popd
 #DBG workaround to make sure libpfm just uses the normal CFLAGS
 DBG="" make %{?_smp_mflags}
 
+%global _prefix /usr
+%global _mandir %{_datadir}/man
+%global _libdir %{_exec_prefix}/%{_lib}
+
 # configure/build papi4 also
 pushd ../../papi-%{papi4_version}/src
+autoconf --force
 %configure --with-static-lib=no --with-shared-lib=yes --with-shlib
 #DBG workaround to make sure libpfm just uses the normal CFLAGS
 DBG="" make
@@ -118,7 +141,7 @@ popd
 rm -rf $RPM_BUILD_ROOT
 cd src
 #install the newer version files in papidir to avoid conflict
-make DESTDIR=$RPM_BUILD_ROOT/%{papidir} LDCONFIG=/bin/true install-all
+make DESTDIR=$RPM_BUILD_ROOT LDCONFIG=/bin/true install-all
 
 #install the older papi-4.1.3 version for capatibility
 pushd ../../papi-%{papi4_version}/src
@@ -140,9 +163,15 @@ mv $RPM_BUILD_ROOT%{papidir}/usr/share/papi/papi_events.csv $RPM_BUILD_ROOT/usr/
 rm -rf $RPM_BUILD_ROOT%{papidir}%{_mandir}/man1
 mv $RPM_BUILD_ROOT%{papidir}%{_bindir}/* $RPM_BUILD_ROOT%{_bindir}/.
 rm -rf $RPM_BUILD_ROOT%{papidir}%{_bindir}
-if [ "%{_lib}" == "lib64" ] ; then
-mv $RPM_BUILD_ROOT%{papidir}%{_libdir} $RPM_BUILD_ROOT%{papidir}/usr/lib
-fi
+#if [ "%{_lib}" == "lib64" ] ; then
+#mv $RPM_BUILD_ROOT%{papidir}%{_libdir} $RPM_BUILD_ROOT%{papidir}/usr/lib
+#fi
+
+# Fix up the pkgconfig
+# get rid of the default to papi-4 and move over the papi-5 versions
+rm -rf $RPM_BUILD_ROOT%{_libdir}/pkgconfig/papi.pc
+cp -a $RPM_BUILD_ROOT%{papidir}/usr/lib/pkgconfig/* $RPM_BUILD_ROOT%{_libdir}/pkgconfig/.
+rm -rf $RPM_BUILD_ROOT%{papidir}/usr/lib/pkgconfig
 
 chrpath --delete $RPM_BUILD_ROOT%{_libdir}/*.so*
 chrpath --delete $RPM_BUILD_ROOT%{papidir}/usr/lib/*.so.*
@@ -181,6 +210,7 @@ rm -rf $RPM_BUILD_ROOT
 %{papidir}/usr/include
 %{_libdir}/*.so
 %{papidir}/usr/lib/*.so
+%{_libdir}/pkgconfig/papi*.pc
 %doc %{_mandir}/man3/*
 %doc %{papidir}%{_mandir}/man3/*
 
@@ -198,6 +228,24 @@ rm -rf $RPM_BUILD_ROOT
 %{papidir}/usr/lib/*.a
 
 %changelog
+* Fri Apr 17 2015 William Cohen <wcohen@redhat.com> - 5.1.1-11
+- rhbz831752 correct haswell PAPI_L1_TCM preset.
+
+* Mon Mar 2 2015 William Cohen <wcohen@redhat.com> - 5.1.1-10
+- rhbz831752 Force update configure.
+
+* Fri Feb 27 2015 William Cohen <wcohen@redhat.com> - 5.1.1-9
+- rhbz831752 Correct papi5-pkgconfig.patch.
+
+* Fri Feb 27 2015 William Cohen <wcohen@redhat.com> - 5.1.1-8
+- rhbz831752 Select the configure.in file to use as a template.
+
+* Fri Feb 27 2015 William Cohen <wcohen@redhat.com> - 5.1.1-7
+- rhbz831752 make it easier to select papi code with new processor support.
+
+* Wed Feb 11 2015 William Cohen <wcohen@redhat.com> - 5.1.1-6
+- rhbz831752 Update libpfm4 code to handle new processors.
+
 * Fri Sep 13 2013 William Cohen <wcohen@redhat.com> - 5.1.1-5
 - Include the papi-4.1.3 lib dir.
 

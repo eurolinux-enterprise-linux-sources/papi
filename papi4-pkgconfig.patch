@@ -1,0 +1,62 @@
+diff -up papi-4.1.3/src/configure.in.orig papi-4.1.3/src/configure.in
+--- papi-4.1.3/src/configure.in.orig	2011-05-05 11:59:41.000000000 -0400
++++ papi-4.1.3/src/configure.in	2015-02-27 09:56:20.840999829 -0500
+@@ -1530,5 +1530,5 @@ AC_MSG_NOTICE(Generating f90papi.h)
+ ./genpapifdef -f90 > f90papi.h
+ 
+ AC_MSG_NOTICE($FILENAME will be included in the generated Makefile)
+-AC_CONFIG_FILES([Makefile])
++AC_CONFIG_FILES([Makefile papi.pc])
+ AC_OUTPUT
+diff -up papi-4.1.3/src/Makefile.inc.orig papi-4.1.3/src/Makefile.inc
+--- papi-4.1.3/src/Makefile.inc.orig	2015-02-27 09:49:59.254999968 -0500
++++ papi-4.1.3/src/Makefile.inc	2015-02-27 09:55:51.194000776 -0500
+@@ -13,6 +13,8 @@ HEADERS   = $(MISCHDRS) papi.h papi_inte
+     papi_memory.h config.h
+ LIBCFLAGS += -I. $(CFLAGS) -DSUBSTRATE=\"$(SUBSTR).h\" 
+ FHEADERS = fpapi.h f77papi.h f90papi.h
++# pkgconfig directory
++LIBPC = $(LIBDIR)/pkgconfig
+ 
+ all: $(SHOW_CONF) $(LIBS) utils tests
+ .PHONY : all
+@@ -254,7 +256,7 @@ dist: 
+ 
+ install-all: install install-tests
+ 
+-install: install-lib install-man install-utils
++install: install-lib install-man install-utils install-pkgconf
+ 
+ install-lib: native_install
+ 	@echo "Headers (INCDIR) being installed in: \"$(DESTDIR)$(INCDIR)\""; 
+@@ -289,6 +291,15 @@ install-tests:
+ 	$(SETPATH) cd ctests; $(MAKE) DATADIR="$(DESTDIR)$(DATADIR)" CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
+ 	$(SETPATH) cd ftests; $(MAKE) DATADIR="$(DESTDIR)$(DATADIR)" CC="$(CC)" CC_R="$(CC_R)" F77="$(F77)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" FFLAGS="-I.. $(FFLAGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
+ 
++install-pkgconf:
++	@echo "pkcongfig being installed in: \"$(DESTDIR)$(LIBPC)\"";
++	-mkdir -p $(DESTDIR)$(LIBPC)
++	-chmod go+rx $(DESTDIR)$(LIBPC)
++	cp papi.pc $(DESTDIR)$(LIBPC)/papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).pc;
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi-$(PAPIVER).pc;
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi.pc;
++
+ #
+ # Dummy targets for configurations that do not also include a Rules file with targets
+ #
+diff -up papi-4.1.3/src/papi.pc.in.orig papi-4.1.3/src/papi.pc.in
+--- papi-4.1.3/src/papi.pc.in.orig	2015-02-27 09:55:51.246999954 -0500
++++ papi-4.1.3/src/papi.pc.in	2015-02-27 09:55:51.245999929 -0500
+@@ -0,0 +1,11 @@
++prefix=@prefix@
++exec_prefix=@exec_prefix@
++libdir=@libdir@
++includedir=@includedir@
++
++Name: @PACKAGE_NAME@
++Description: Performance API to access performance metrics on system
++Version: @PACKAGE_VERSION@
++Libs: -L${libdir} -lpapi
++Libs.private: @LIBS@
++Cflags: -I${includedir}

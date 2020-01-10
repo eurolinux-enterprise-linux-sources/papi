@@ -1,0 +1,62 @@
+diff -up papi-5.1.1/src/configure.in.orig papi-5.1.1/src/configure.in
+--- papi-5.1.1/src/configure.in.orig	2015-02-27 09:49:59.000000000 -0500
++++ papi-5.1.1/src/configure.in	2015-02-27 09:54:37.372000156 -0500
+@@ -1778,5 +1778,5 @@ AC_MSG_NOTICE(Generating f90papi.h)
+ ./genpapifdef -f90 > f90papi.h
+ 
+ AC_MSG_NOTICE($FILENAME will be included in the generated Makefile)
+-AC_CONFIG_FILES([Makefile])
++AC_CONFIG_FILES([Makefile papi.pc])
+ AC_OUTPUT
+diff -up papi-5.1.1/src/Makefile.inc.orig papi-5.1.1/src/Makefile.inc
+--- papi-5.1.1/src/Makefile.inc.orig	2015-02-27 09:49:59.256999968 -0500
++++ papi-5.1.1/src/Makefile.inc	2015-02-27 09:53:21.972999965 -0500
+@@ -17,6 +17,8 @@ HEADERS   = $(MISCHDRS) $(OSFILESHDR) pa
+ 	papi_events_table.h
+ LIBCFLAGS += -I. $(CFLAGS) -DOSLOCK=\"$(OSLOCK)\" -DOSCONTEXT=\"$(OSCONTEXT)\"
+ FHEADERS = fpapi.h f77papi.h f90papi.h
++# pkgconfig directory
++LIBPC = $(LIBDIR)/pkgconfig
+ 
+ all: $(SHOW_CONF) $(LIBS) utils tests
+ .PHONY : all test fulltest tests testlib utils ctests ftests comp_tests null
+@@ -287,7 +289,7 @@ dist: 
+ 
+ install-all: install install-tests
+ 
+-install: install-lib install-man install-utils
++install: install-lib install-man install-utils install-pkgconf
+ 
+ install-lib: native_install
+ 	@echo "Headers (INCDIR) being installed in: \"$(DESTDIR)$(INCDIR)\""; 
+@@ -336,6 +338,15 @@ ifneq (${COMPONENTS},)
+ 	done 
+ endif
+ 
++install-pkgconf:
++	@echo "pkcongfig being installed in: \"$(DESTDIR)$(LIBPC)\"";
++	-mkdir -p $(DESTDIR)$(LIBPC)
++	-chmod go+rx $(DESTDIR)$(LIBPC)
++	cp papi.pc $(DESTDIR)$(LIBPC)/papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).pc;
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi-$(PAPIVER).pc;
++	cd $(DESTDIR)$(LIBPC); ln -sf papi-$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC).pc papi.pc;
++
+ #
+ # Dummy targets for configurations that do not also include a Rules file with targets
+ #
+diff -up papi-5.1.1/src/papi.pc.in.orig papi-5.1.1/src/papi.pc.in
+--- papi-5.1.1/src/papi.pc.in.orig	2015-02-27 09:53:22.023999966 -0500
++++ papi-5.1.1/src/papi.pc.in	2015-02-27 09:53:22.023999966 -0500
+@@ -0,0 +1,11 @@
++prefix=@prefix@
++exec_prefix=@exec_prefix@
++libdir=@libdir@
++includedir=@includedir@
++
++Name: @PACKAGE_NAME@
++Description: Performance API to access performance metrics on system
++Version: @PACKAGE_VERSION@
++Libs: -L${libdir} -lpapi
++Libs.private: @LIBS@
++Cflags: -I${includedir}
