@@ -1,22 +1,20 @@
 /* 
 * File:    data_range.c
-* CVS:     $Id: data_range.c,v 1.7 2010/02/22 18:36:03 jagode Exp $
 * Author:  Dan Terpstra
 *          terpstra@cs.utk.edu
 * Mods:    <your name here>
 *          <your email address>
 */
 
-/* This file performs the following test: exercise the Itanium data address range interface
-
-*/
+/* This file performs the following test: */
+/*     exercise the Itanium data address range interface */
 
 #include "papi_test.h"
 #define NUM 16384
 
 static void init_array( void );
-static int do_malloc_work( unsigned long loop );
-static int do_static_work( unsigned long loop );
+static int do_malloc_work( long loop );
+static int do_static_work( long loop );
 static void measure_load_store( caddr_t start, caddr_t end );
 static void measure_event( int index, PAPI_option_t * option );
 
@@ -67,7 +65,7 @@ main( int argc, char **argv )
 	PAPI_event_name_to_code( event_name[0], &PAPI_event[0] );
 	PAPI_event_name_to_code( event_name[1], &PAPI_event[1] );
 #else
-	test_fail( __FILE__, __LINE__, "only works for Itanium", PAPI_ESBSTR );
+	test_skip( __FILE__, __LINE__, "only works for Itanium", PAPI_ENOSUPP );
 #endif
 
 	if ( ( retval = PAPI_create_eventset( &EventSet ) ) != PAPI_OK )
@@ -201,7 +199,7 @@ init_array( void )
 }
 
 static int
-do_static_work( unsigned long loop )
+do_static_work( long loop )
 {
 	int i;
 	int sum = 0;
@@ -225,7 +223,7 @@ do_static_work( unsigned long loop )
 }
 
 static int
-do_malloc_work( unsigned long loop )
+do_malloc_work( long loop )
 {
 	int i;
 	int sum = 0;

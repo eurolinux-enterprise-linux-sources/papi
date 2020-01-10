@@ -1,6 +1,5 @@
 /* 
 * File:    multiplex.c
-* CVS:     $Id: multiplex1.c,v 1.54 2010/08/25 22:08:19 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>
@@ -14,16 +13,18 @@
 
 /* Event to use in all cases; initialized in init_papi() */
 
-int solaris_preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
-	PAPI_BR_MSP, PAPI_TOT_CYC, PAPI_L2_TCM, PAPI_L1_ICM, 0
+#define TOTAL_EVENTS 6
+
+int solaris_preset_PAPI_events[TOTAL_EVENTS] = {
+  PAPI_TOT_CYC, PAPI_BR_MSP, PAPI_L2_TCM, PAPI_L1_ICM, 0
 };
-int power6_preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
-	PAPI_FP_INS, PAPI_TOT_CYC, PAPI_L1_DCM, PAPI_L1_ICM, 0
+int power6_preset_PAPI_events[TOTAL_EVENTS] = {
+	PAPI_TOT_CYC, PAPI_FP_INS, PAPI_L1_DCM, PAPI_L1_ICM, 0
 };
-int preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
-	PAPI_FP_INS, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, 0
+int preset_PAPI_events[TOTAL_EVENTS] = {
+  PAPI_TOT_CYC, PAPI_FP_INS, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, 0
 };
-static int PAPI_events[PAPI_MPX_DEF_DEG] = { 0, };
+static int PAPI_events[TOTAL_EVENTS] = { 0, };
 static int PAPI_events_len = 0;
 
 #define CPP_TEST_FAIL(string, retval) test_fail(__FILE__, __LINE__, string, retval)
@@ -316,6 +317,87 @@ case4(  )
 	return ( SUCCESS );
 }
 
+/* Tests that PAPI_read() works immediately after
+   PAPI_start() */
+
+int
+case5(  )
+{
+  int retval, i, j, EventSet = PAPI_NULL;
+	long long start_values[4] = { 0,0,0,0 }, values[4] = {0,0,0,0};
+	char out[PAPI_MAX_STR_LEN];
+
+	PAPI_events_len = 2;
+	init_papi( PAPI_events, &PAPI_events_len );
+
+	retval = PAPI_create_eventset( &EventSet );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_create_eventset", retval );
+
+	/* In Component PAPI, EventSets must be assigned a component index
+	   before you can fiddle with their internals.
+	   0 is always the cpu component */
+
+	retval = PAPI_assign_eventset_component( EventSet, 0 );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_assign_eventset_component", retval );
+	
+	retval = PAPI_set_multiplex( EventSet );
+        if ( retval == PAPI_ENOSUPP) {
+	   test_skip(__FILE__, __LINE__, "Multiplex not supported", 1);
+	}   
+	else if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_set_multiplex", retval );
+
+	/* Add 2 events... */
+
+	i = 0;
+	retval = PAPI_add_event( EventSet, PAPI_events[i] );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_add_event", retval );
+	PAPI_event_code_to_name( PAPI_events[i], out );
+	printf( "Added %s\n", out );
+	i++;
+	retval = PAPI_add_event( EventSet, PAPI_events[i] );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_add_event", retval );
+	PAPI_event_code_to_name( PAPI_events[i], out );
+	printf( "Added %s\n", out );
+	i++;
+
+	do_stuff(  );
+
+	retval = PAPI_start( EventSet );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_start", retval );
+	
+	retval = PAPI_read( EventSet, start_values );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_read", retval );
+
+	do_stuff(  );
+
+	retval = PAPI_stop( EventSet, values );
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_stop", retval );
+
+	for (j=0;j<i;j++)
+	  {
+	      printf("read @start counter[%d]: %lld\n", j, start_values[j]);
+	      printf("read @stop  counter[%d]: %lld\n", j, values[j]);
+	      printf("difference  counter[%d]: %lld\n ", j, values[j]-start_values[j]);
+	      if (values[j]-start_values[j] < 0LL)
+		CPP_TEST_FAIL( "Difference in start and stop resulted in negative value!", 0 );
+	  }
+
+	retval = PAPI_cleanup_eventset( EventSet );	/* JT */
+	if ( retval != PAPI_OK )
+		CPP_TEST_FAIL( "PAPI_cleanup_eventset", retval );
+
+	PAPI_shutdown(  );
+	return ( SUCCESS );
+}
+
 int
 main( int argc, char **argv )
 {
@@ -334,6 +416,9 @@ main( int argc, char **argv )
 
 	printf( "\ncase4: Does add/setmpx/add work?\n" );
 	case4(  );
+	
+	printf( "\ncase5: Does setmpx/add/add/start/read work?\n" );
+	case5(  );
 
 	test_pass( __FILE__, NULL, 0 );
 	exit( 0 );

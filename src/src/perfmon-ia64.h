@@ -2,7 +2,7 @@
 #define _PAPI_PERFMON_IA64_H
 /* 
 * File:    perfmon-ia64.h
-* CVS:     $Id: perfmon-ia64.h,v 1.1 2011/04/14 21:50:39 vweaver1 Exp $
+* CVS:     $Id$
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 *
@@ -57,8 +57,6 @@
 #include "perfmon/pfmlib_montecito.h"
 #include "perfmon/pfmlib_itanium2.h"
 #include "perfmon/pfmlib_itanium.h"
-
-#include "linux-lock.h"
 
 typedef int ia64_register_t;
 typedef int ia64_register_map_t;
@@ -138,7 +136,7 @@ typedef struct itanium_preset_search
 	char operation[MAX_COUNTERS * 5];
 } itanium_preset_search_t;
 
-typedef struct Itanium_context
+typedef struct
 {
 	int fd;							   /* file descriptor */
 	pid_t tid;						   /* thread id */
@@ -147,12 +145,13 @@ typedef struct Itanium_context
 #endif
 } ia64_context_t;
 
-//typedef Itanium_context_t hwd_context_t;
+#undef hwd_context_t
+typedef ia64_context_t hwd_context_t;
 
 #include "linux-context.h"
 
-#undef  hwd_ucontext_t
-typedef struct sigcontext hwd_ucontext_t;
+//#undef  hwd_ucontext_t
+//typedef struct sigcontext hwd_ucontext_t;
 
 /* Override void* definitions from PAPI framework layer */
 /* with typedefs to conform to PAPI component layer code. */
@@ -174,8 +173,4 @@ typedef ia64_control_state_t hwd_control_state_t;
 #define DEAR_REGS_MASK      (M_PMD(2)|M_PMD(3)|M_PMD(17))
 #define BTB_REGS_MASK       (M_PMD(8)|M_PMD(9)|M_PMD(10)|M_PMD(11)|M_PMD(12)|M_PMD(13)|M_PMD(14)|M_PMD(15)|M_PMD(16))
 
-
-#define MY_VECTOR _ia64_vector
-
-#endif /* __INTEL_COMPILER */
 #endif /* _PAPI_PERFMON_IA64_H */

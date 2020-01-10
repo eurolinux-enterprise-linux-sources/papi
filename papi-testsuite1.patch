@@ -1,0 +1,618 @@
+commit 395b7bc70846e666552c81fb7a1aa596eb26612b
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Thu Feb 14 10:17:40 2013 -0500
+
+    Add component tests' to the install-[all|tests] target.
+    
+    Thanks to Gary Mohr.
+    -------------------
+    This makes a fairly small change to src/Makefile.inc to add logic that adds a
+    new install-comp_tests target which calls the install target for each component
+    being built.
+    This new target is listed as a dependency on the install-tests target so it
+    will happen when the 'install-all', 'install-tests', or 'install-comp_tests'
+    targets are used.
+    A note about this change, I am not real familiar with the auto make and auto
+    conf tools. This change was enough to make it work for me but if there is
+    another file that should also be changed for this modification, please help me
+    out here.
+    
+    The patch also adds install targets to the Makefiles for all of the components
+    which have 'tests' directories and updates the README file which talks about
+    how to create component tests.
+    
+    Another note, I only compile with a couple of components
+    (ours, rapl, and example) so if I fat fingered something in one of the other
+    components Makefiles I would not have noticed.
+    Please keep me honest and make sure you compile with them all enabled.
+    
+    Thanks for adding this capability for us.
+    Gary
+    ---------------------------
+    
+    Makefile.inc: Add run_tests and friends to install-tests target.
+    
+    Component test Makefiles' get their install location to mirror what runtests expects.
+
+diff --git a/src/Makefile.inc b/src/Makefile.inc
+index 02d5b13..e0f99c3 100644
+--- a/src/Makefile.inc
++++ b/src/Makefile.inc
+@@ -316,9 +316,25 @@ install-man:
+ install-utils: 
+ 	$(SETPATH) cd utils; $(MAKE) BINDIR="$(DESTDIR)$(BINDIR)" CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
+ 	
+-install-tests:
++install-tests:  install-comp_tests
++	$(SETPATH) cd testlib; $(MAKE) DATADIR="$(DESTDIR)$(DATADIR)" CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
+ 	$(SETPATH) cd ctests; $(MAKE) DATADIR="$(DESTDIR)$(DATADIR)" CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
+ 	$(SETPATH) cd ftests; $(MAKE) DATADIR="$(DESTDIR)$(DATADIR)" CC="$(CC)" CC_R="$(CC_R)" F77="$(F77)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" FFLAGS="-I.. $(FFLAGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install
++	-cp run_tests.sh $(DESTDIR)$(DATADIR)
++	-cp run_tests_exclude_cuda.txt $(DESTDIR)$(DATADIR)
++	-cp run_tests_exclude.txt $(DESTDIR)$(DATADIR)
++	-chmod go+rx $(DESTDIR)$(DATADIR)/run_tests.sh
++	-chmod go+r $(DESTDIR)$(DATADIR)/run_tests_exclude_cuda.txt $(DESTDIR)$(DATADIR)/run_tests_exclude.txt
++
++# Component tests installing
++install-comp_tests:
++ifneq (${COMPONENTS},)
++	@for comp in ${COMPONENTS} ; do \
++		cd components/$$comp/tests ; \
++		$(MAKE) DATADIR="$(DESTDIR)$(DATADIR)/components" install  ; \
++		cd ../../.. ; \
++	done 
++endif
+ 
+ #
+ # Dummy targets for configurations that do not also include a Rules file with targets
+diff --git a/src/components/README b/src/components/README
+index 8962a7b..59c60ec 100644
+--- a/src/components/README
++++ b/src/components/README
+@@ -24,7 +24,7 @@ There is one final very important naming convention that applies to components.
+ Adding tests to the components:
+ -------------------------------
+ 
+-In order to add tests to a component that will be compiled together with PAPI when typing 'make' (as well as cleaned up when 'make clean' or 'make clobber' is typed), the following steps need to be carried out:
++In order to add tests to a component that will be compiled together with PAPI when typing 'make' (as well as cleaned up when 'make clean' or 'make clobber' is typed and installed when 'make install-all' or 'make install-tests' is called), the following steps need to be carried out:
+ 
+     1. create a directory with name 'tests' in the specific component directory
+     2. add your test files and a Makefile to the 'tests' directory (see the example test and Makefile in components/example/tests)
+@@ -33,6 +33,7 @@ In order to add tests to a component that will be compiled together with PAPI wh
+ 	example_tests: $(TESTS)
+     4. Include components/Makefile_comp_tests to your component test Makefile
+ 	(see components/example/tests/Makefile for more details)
++	5. You may also define 'clean' and/or 'install' targets (as shown in the example) which will be called during those parts of the build.  If these targets are missing it will just print a message reporting the missing target and continue.
+ 
+ NOTE: there is no need to modify any PAPI code other than adding your tests and a Makefile to your component and follow step 1 to 4 listed above.
+ 
+diff --git a/src/components/appio/tests/Makefile b/src/components/appio/tests/Makefile
+index 1381d55..8fde722 100644
+--- a/src/components/appio/tests/Makefile
++++ b/src/components/appio/tests/Makefile
+@@ -62,6 +62,15 @@ init_fini.o: init_fini.c
+ appio_test_iozone: iozone/iozone_linux$(ARCH_SUFFIX).o iozone/libasync.o iozone/libbif.o init_fini.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) -g -O2 -o $@ $(LDFLAGS) $^ -lpthread -lrt
+ 
++install:
++	@echo "APPIO tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/appio/tests
++	-chmod go+rx $(DATADIR)/
++	-chmod go+rx $(DATADIR)/appio/tests
++	-cp $(ALL_TESTS) $(DATADIR)/appio/tests
++	-chmod go+rx $(DATADIR)/appio/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/appio/tests \;
++
+ clean:
+ 	rm -f $(ALL_TESTS) appio_test_iozone *.o
+ 
+diff --git a/src/components/coretemp/tests/Makefile b/src/components/coretemp/tests/Makefile
+index feb095c..deed359 100644
+--- a/src/components/coretemp/tests/Makefile
++++ b/src/components/coretemp/tests/Makefile
+@@ -13,6 +13,14 @@ coretemp_basic: coretemp_basic.o $(UTILOBJS) $(PAPILIB)
+ coretemp_pretty: coretemp_pretty.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o coretemp_pretty coretemp_pretty.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "CORETEMP tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/coretemp/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/coretemp/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/coretemp/tests \;
++	-chmod go+rx $(DATADIR)/coretemp/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/coretemp/tests \;
+ 
+ clean:
+ 	rm -f $(TESTS) *.o
+diff --git a/src/components/cuda/tests/Makefile b/src/components/cuda/tests/Makefile
+index 0d2a1fc..46b15f8 100644
+--- a/src/components/cuda/tests/Makefile
++++ b/src/components/cuda/tests/Makefile
+@@ -13,6 +13,15 @@ cuda_tests: $(TESTS)
+ HelloWorld: HelloWorld.o $(UTILOBJS) $(PAPILIB)
+ 	$(NVCC) $(INCLUDE) $(NVCFLAGS) -o HelloWorld HelloWorld.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS)
+ 
++install:
++	@echo "CUDA tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/cuda/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/cuda/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/cuda/tests \;
++	-chmod go+rx $(DATADIR)/cuda/tests/*
++	-find . -name "*.cu" -type f -exec cp {} $(DATADIR)/cuda/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/components/example/tests/Makefile b/src/components/example/tests/Makefile
+index 516285a..35baca0 100644
+--- a/src/components/example/tests/Makefile
++++ b/src/components/example/tests/Makefile
+@@ -13,6 +13,14 @@ example_basic: example_basic.o $(UTILOBJS) $(PAPILIB)
+ example_multiple_components: example_multiple_components.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o example_multiple_components example_multiple_components.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "EXAMPLE tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/example/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/example/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/example/tests \;
++	-chmod go+rx $(DATADIR)/example/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/example/tests \;
+ 
+ clean:
+ 	rm -f $(TESTS) *.o
+diff --git a/src/components/infiniband/tests/Makefile b/src/components/infiniband/tests/Makefile
+new file mode 100644
+index 0000000..1be407f
+--- /dev/null
++++ b/src/components/infiniband/tests/Makefile
+@@ -0,0 +1,28 @@
++include ../../Makefile_comp_tests
++
++TESTS = infiniband_list_events infiniband_values_by_code 
++
++infiniband_tests: $(TESTS)
++
++
++%.o:%.c
++	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
++
++infiniband_list_events: infiniband_list_events.o $(UTILOBJS) $(PAPILIB)
++	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LDFLAGS)
++
++infiniband_values_by_code: infiniband_values_by_code.o $(UTILOBJS) $(PAPILIB)
++	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LDFLAGS)
++
++install:
++	@echo "Infiniband tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/infiniband/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/infiniband/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/infiniband/tests \;
++	-chmod go+rx $(DATADIR)/infiniband/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/infiniband/tests \;
++
++clean:
++	rm -f $(TESTS) *.o
++
+diff --git a/src/components/infiniband/tests/infiniband_list_events.c b/src/components/infiniband/tests/infiniband_list_events.c
+new file mode 100644
+index 0000000..ff2b98b
+--- /dev/null
++++ b/src/components/infiniband/tests/infiniband_list_events.c
+@@ -0,0 +1,89 @@
++/****************************/
++/* THIS IS OPEN SOURCE CODE */
++/****************************/
++
++/** 
++ * @author  Jose Pedro Oliveira
++ *
++ * test case for the linux-infiniband component
++ * Adapted from its counterpart in the net component.
++ *
++ * @brief
++ *   List all net events codes and names
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include "papi_test.h"
++
++int main (int argc, char **argv)
++{
++    int retval,cid,numcmp;
++    int total_events=0;
++    int code;
++    char event_name[PAPI_MAX_STR_LEN];
++    int r;
++    const PAPI_component_info_t *cmpinfo = NULL;
++
++    /* Set TESTS_QUIET variable */
++    tests_quiet( argc, argv );
++
++    /* PAPI Initialization */
++    retval = PAPI_library_init( PAPI_VER_CURRENT );
++    if ( retval != PAPI_VER_CURRENT ) {
++        test_fail(__FILE__, __LINE__,"PAPI_library_init failed\n",retval);
++    }
++
++    if (!TESTS_QUIET) {
++        printf("Listing all net events\n");
++    }
++
++    numcmp = PAPI_num_components();
++
++    for(cid=0; cid<numcmp; cid++) {
++
++        if ( (cmpinfo = PAPI_get_component_info(cid)) == NULL) {
++            test_fail(__FILE__, __LINE__,"PAPI_get_component_info failed\n",-1);
++        }
++
++        if ( strstr(cmpinfo->name, "infiniband") == NULL) {
++            continue;
++        }
++
++        if (!TESTS_QUIET) {
++            printf("Component %d (%d) - %d events - %s\n",
++                cid, cmpinfo->CmpIdx,
++                cmpinfo->num_native_events, cmpinfo->name);
++        }
++
++        code = PAPI_NATIVE_MASK;
++
++        r = PAPI_enum_cmp_event( &code, PAPI_ENUM_FIRST, cid );
++        while ( r == PAPI_OK ) {
++
++            retval = PAPI_event_code_to_name( code, event_name );
++            if ( retval != PAPI_OK ) {
++                test_fail( __FILE__, __LINE__, "PAPI_event_code_to_name", retval );
++            }
++
++            if (!TESTS_QUIET) {
++                printf("0x%x %s\n", code, event_name);
++            }
++
++            total_events++;
++
++            r = PAPI_enum_cmp_event( &code, PAPI_ENUM_EVENTS, cid );
++        }
++
++    }
++
++    if (total_events==0) {
++        test_skip(__FILE__,__LINE__,"No net events found", 0);
++    }
++
++    test_pass( __FILE__, NULL, 0 );
++
++    return 0;
++}
++
++// vim:set ai ts=4 sw=4 sts=4 et:
+diff --git a/src/components/infiniband/tests/infiniband_values_by_code.c b/src/components/infiniband/tests/infiniband_values_by_code.c
+new file mode 100644
+index 0000000..cb64b36
+--- /dev/null
++++ b/src/components/infiniband/tests/infiniband_values_by_code.c
+@@ -0,0 +1,137 @@
++/****************************/
++/* THIS IS OPEN SOURCE CODE */
++/****************************/
++
++/** 
++ * @author  Jose Pedro Oliveira
++ *
++ * test case for the linux-infiniband component
++ * Adapted from its counterpart in the net component.
++ *
++ * @brief
++ *   Prints the value of every net event (by code)
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include "papi_test.h"
++
++#define PINGADDR   "127.0.0.1"
++
++int main (int argc, char **argv)
++{
++    int retval,cid,numcmp;
++    int EventSet = PAPI_NULL;
++    long long value;
++    int code;
++    char event_name[PAPI_MAX_STR_LEN];
++    int total_events=0;
++    int r;
++    const PAPI_component_info_t *cmpinfo = NULL;
++
++    /* Set TESTS_QUIET variable */
++    tests_quiet( argc, argv );
++
++    /* PAPI Initialization */
++    retval = PAPI_library_init( PAPI_VER_CURRENT );
++    if ( retval != PAPI_VER_CURRENT ) {
++        test_fail(__FILE__, __LINE__,"PAPI_library_init failed\n",retval);
++    }
++
++    if (!TESTS_QUIET) {
++        printf("Trying all net events\n");
++    }
++
++    numcmp = PAPI_num_components();
++
++    for(cid=0; cid<numcmp; cid++) {
++
++        if ( (cmpinfo = PAPI_get_component_info(cid)) == NULL) {
++            test_fail(__FILE__, __LINE__,"PAPI_get_component_info failed\n",-1);
++        }
++
++        if (!TESTS_QUIET) {
++            printf("Component %d - %d events - %s\n", cid,
++                cmpinfo->num_native_events, cmpinfo->name);
++        }
++
++        if ( strstr(cmpinfo->name, "infiniband") == NULL) {
++            continue;
++        }
++
++        code = PAPI_NATIVE_MASK;
++
++        r = PAPI_enum_cmp_event( &code, PAPI_ENUM_FIRST, cid );
++        while ( r == PAPI_OK ) {
++
++            retval = PAPI_event_code_to_name( code, event_name );
++            if ( retval != PAPI_OK ) {
++                test_fail( __FILE__, __LINE__, "PAPI_event_code_to_name", retval );
++            }
++
++            if (!TESTS_QUIET) {
++                printf("0x%x %-24s = ", code, event_name);
++            }
++
++            EventSet = PAPI_NULL;
++
++            retval = PAPI_create_eventset( &EventSet );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_create_eventset()", retval);
++            }
++
++            retval = PAPI_add_event( EventSet, code );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_add_event()", retval);
++            }
++
++            retval = PAPI_start( EventSet );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_start()", retval);
++            }
++
++            if (strcmp(event_name, "_recv") == 0) {
++                /* XXX figure out a general method to  generate some traffic 
++                 * for infiniband
++                 * the operation should take more than one second in order
++                 * to guarantee that the network counters are updated */
++                retval = system("ping -c 4 " PINGADDR " > /dev/null");
++                if (retval < 0) {
++					test_fail(__FILE__, __LINE__, "Unable to start ping", retval);
++				}
++            }
++
++            retval = PAPI_stop( EventSet, &value );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_stop()", retval);
++            }
++
++            if (!TESTS_QUIET) printf("%lld\n", value);
++
++            retval = PAPI_cleanup_eventset( EventSet );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_cleanup_eventset()", retval);
++            }
++
++            retval = PAPI_destroy_eventset( &EventSet );
++            if (retval != PAPI_OK) {
++                test_fail(__FILE__, __LINE__, "PAPI_destroy_eventset()", retval);
++            }
++
++            total_events++;
++
++            r = PAPI_enum_cmp_event( &code, PAPI_ENUM_EVENTS, cid );
++        }
++
++    }
++
++    if (total_events==0) {
++        test_skip(__FILE__,__LINE__,"No net events found", 0);
++    }
++
++    test_pass( __FILE__, NULL, 0 );
++
++    return 0;
++}
++
++// vim:set ai ts=4 sw=4 sts=4 et:
+diff --git a/src/components/lustre/tests/Makefile b/src/components/lustre/tests/Makefile
+index 4f2fee6..1cd905f 100644
+--- a/src/components/lustre/tests/Makefile
++++ b/src/components/lustre/tests/Makefile
+@@ -10,6 +10,15 @@ lustre_tests: $(TESTS)
+ lustre_basic: lustre_basic.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o lustre_basic lustre_basic.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "LUSTRE tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/lustre/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/lustre/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/lustre/tests \;
++	-chmod go+rx $(DATADIR)/lustre/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/lustre/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/components/micpower/tests/Makefile b/src/components/micpower/tests/Makefile
+index 47e87d2..604d467 100644
+--- a/src/components/micpower/tests/Makefile
++++ b/src/components/micpower/tests/Makefile
+@@ -10,6 +10,14 @@ micpower_tests: $(TESTS)
+ micpower_basic: micpower_basic.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o micpower_basic micpower_basic.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "MICPOWER tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/micpower/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/micpower/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/micpower/tests \;
++	-chmod go+rx $(DATADIR)/micpower/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/micpower/tests \;
+ 
+ clean:
+ 	rm -f $(TESTS) *.o
+diff --git a/src/components/mx/tests/Makefile b/src/components/mx/tests/Makefile
+index 8e4c758..842987e 100644
+--- a/src/components/mx/tests/Makefile
++++ b/src/components/mx/tests/Makefile
+@@ -14,6 +14,15 @@ mx_basic: mx_basic.o $(UTILOBJS) $(PAPILIB)
+ mx_elapsed: mx_elapsed.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o mx_elapsed mx_elapsed.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "MX tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/mx/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/mx/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/mx/tests \;
++	-chmod go+rx $(DATADIR)/mx/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/mx/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/components/net/tests/Makefile b/src/components/net/tests/Makefile
+index ca1b463..a104347 100644
+--- a/src/components/net/tests/Makefile
++++ b/src/components/net/tests/Makefile
+@@ -17,6 +17,14 @@ net_values_by_code: net_values_by_code.o $(UTILOBJS) $(PAPILIB)
+ net_values_by_name: net_values_by_name.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ net_values_by_name.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS)
+ 
++install:
++	@echo "NET tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/net/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/net/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/net/tests \;
++	-chmod go+rx $(DATADIR)/net/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/net/tests \;
+ 
+ clean:
+ 	rm -f $(TESTS) *.o
+diff --git a/src/components/nvml/tests/Makefile b/src/components/nvml/tests/Makefile
+index 991ae7c..4edec7b 100644
+--- a/src/components/nvml/tests/Makefile
++++ b/src/components/nvml/tests/Makefile
+@@ -13,6 +13,15 @@ nvml_tests: $(TESTS)
+ HelloWorld: HelloWorld.o $(UTILOBJS) $(PAPILIB)
+ 	$(NVCC) $(INCLUDE) $(NVCFLAGS) -o HelloWorld HelloWorld.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS)
+ 
++install:
++	@echo "NVML tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/nvml/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/nvml/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/nvml/tests \;
++	-chmod go+rx $(DATADIR)/nvml/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/nvml/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/components/rapl/tests/Makefile b/src/components/rapl/tests/Makefile
+index a60be32..983ffb8 100644
+--- a/src/components/rapl/tests/Makefile
++++ b/src/components/rapl/tests/Makefile
+@@ -22,6 +22,15 @@ rapl_basic: rapl_basic.o $(UTILOBJS) $(PAPILIB)
+ rapl_busy: rapl_busy.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o rapl_busy rapl_busy.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "RAPL tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/rapl/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/rapl/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/rapl/tests \;
++	-chmod go+rx $(DATADIR)/rapl/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/rapl/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o *~
+ 
+diff --git a/src/components/stealtime/tests/Makefile b/src/components/stealtime/tests/Makefile
+index 1415477..20cb8e8 100644
+--- a/src/components/stealtime/tests/Makefile
++++ b/src/components/stealtime/tests/Makefile
+@@ -5,11 +5,20 @@ include ../../Makefile_comp_tests
+ 
+ TESTS = stealtime_basic
+ 
+-lustre_tests: $(TESTS)
++stealtime_tests: $(TESTS)
+ 
+ stealtime_basic: stealtime_basic.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o stealtime_basic stealtime_basic.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "STEALTIME tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/stealtime/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/stealtime/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/stealtime/tests \;
++	-chmod go+rx $(DATADIR)/stealtime/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/stealtime/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/components/vmware/tests/Makefile b/src/components/vmware/tests/Makefile
+index ee1f90e..c2a02f5 100644
+--- a/src/components/vmware/tests/Makefile
++++ b/src/components/vmware/tests/Makefile
+@@ -10,6 +10,15 @@ vmware_tests: $(TESTS)
+ vmware_basic: vmware_basic.o $(UTILOBJS) $(PAPILIB)
+ 	$(CC) $(CFLAGS) $(INCLUDE) -o vmware_basic vmware_basic.o $(UTILOBJS) $(PAPILIB) $(LDFLAGS) 
+ 
++install:
++	@echo "VMWARE tests (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/vmware/tests
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/vmware/tests
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/vmware/tests \;
++	-chmod go+rx $(DATADIR)/vmware/tests/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/vmware/tests \;
++
+ clean:
+ 	rm -f $(TESTS) *.o
+ 
+diff --git a/src/testlib/Makefile b/src/testlib/Makefile
+index f080d23..8b39528 100644
+--- a/src/testlib/Makefile
++++ b/src/testlib/Makefile
+@@ -25,3 +25,11 @@ clean:
+ 	rm -f *.o *.stderr *.stdout core *~ $(ALL)
+ 
+ install: 
++	@echo "Papi testlib (DATADIR) being installed in: \"$(DATADIR)\""; 
++	-mkdir -p $(DATADIR)/testlib
++	-chmod go+rx $(DATADIR)
++	-chmod go+rx $(DATADIR)/testlib
++	-find . -perm -100 -type f -exec cp {} $(DATADIR)/testlib \;
++	-chmod go+rx $(DATADIR)/testlib/*
++	-find . -name "*.[ch]" -type f -exec cp {} $(DATADIR)/testlib \;
++	

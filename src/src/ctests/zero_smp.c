@@ -1,4 +1,4 @@
-/* $Id: zero_smp.c,v 1.30 2010/02/22 18:36:04 jagode Exp $ */
+/* $Id$ */
 
 /* This file performs the following test: start, stop and timer
 functionality for 2 slave native SMP threads
@@ -41,9 +41,6 @@ Master pthread:
 #include <pthread.h>
 #endif
 
-extern int TESTS_QUIET;				   /* Declared in test_utils.c */
-const PAPI_hw_info_t *hw_info = NULL;
-
 
 void
 Thread( int t, int n )
@@ -59,7 +56,7 @@ Thread( int t, int n )
 	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
 	   PAPI_TOT_INS, depending on the availability of the event on the
 	   platform */
-	EventSet1 = add_two_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+	EventSet1 = add_two_events( &num_events1, &PAPI_event, &mask1 );
 
 	retval = PAPI_event_code_to_name( PAPI_event, event_name );
 	if ( retval != PAPI_OK )
@@ -89,8 +86,9 @@ Thread( int t, int n )
 
 	if ( !TESTS_QUIET ) {
 		printf( "Thread 0x%x %-12s : \t%lld\n", t, event_name,
-				( values[0] )[0] );
-		printf( "Thread 0x%x PAPI_TOT_CYC : \t%lld\n", t, ( values[0] )[1] );
+				values[0][1] );
+		printf( "Thread 0x%x PAPI_TOT_CYC : \t%lld\n", t, 
+			values[0][0] );
 	}
 
 	free_test_space( values, num_tests );
@@ -98,6 +96,7 @@ Thread( int t, int n )
 		printf( "Thread 0x%x Real usec    : \t%lld\n", t, elapsed_us );
 		printf( "Thread 0x%x Real cycles  : \t%lld\n", t, elapsed_cyc );
 	}
+	PAPI_unregister_thread(  );
 }
 
 int
@@ -112,10 +111,6 @@ main( int argc, char **argv )
 	if ( retval != PAPI_VER_CURRENT )
 		test_fail( __FILE__, __LINE__, "PAPI_library_init", retval );
 
-	hw_info = PAPI_get_hardware_info(  );
-	if ( hw_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
-
 	elapsed_us = PAPI_get_real_usec(  );
 
 	elapsed_cyc = PAPI_get_real_cyc(  );
@@ -124,7 +119,7 @@ main( int argc, char **argv )
 	retval =
 		PAPI_thread_init( ( unsigned long ( * )( void ) ) ( pthread_self ) );
 	if ( retval != PAPI_OK ) {
-		if ( retval == PAPI_ESBSTR )
+		if ( retval == PAPI_ECMP )
 			test_skip( __FILE__, __LINE__, "PAPI_thread_init", retval );
 		else
 			test_fail( __FILE__, __LINE__, "PAPI_thread_init", retval );

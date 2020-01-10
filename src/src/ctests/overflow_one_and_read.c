@@ -12,13 +12,8 @@
 
 #include "papi_test.h"
 
-#if defined(_WIN32)
-#define OVER_FMT	"handler(%d, %x, %d, %I64d, %d, %p) Overflow at %p!\n"
-#define OUT_FMT		"%-12s : %16I64d%16I64d\n"
-#else
 #define OVER_FMT	"handler(%d) Overflow at %p! vector=0x%llx\n"
 #define OUT_FMT		"%-12s : %16lld%16lld\n"
-#endif
 
 typedef struct
 {
@@ -31,7 +26,6 @@ typedef struct
 /*not used*/ ocount_t overflow_counts[3] = { {0, 0}, {0, 0}, {0, 0} };
 /*not used*/ int total_unknown = 0;
 
-static const PAPI_hw_info_t *hw_info = NULL;
 /*added*/ long long dummyvalues[2];
 
 void
@@ -72,16 +66,12 @@ main( int argc, char **argv )
 	if ( retval != PAPI_VER_CURRENT )
 		test_fail( __FILE__, __LINE__, "PAPI_library_init", retval );
 
-	hw_info = PAPI_get_hardware_info(  );
-	if ( hw_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
-
 	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
 	   PAPI_TOT_INS, depends on the availability of the event on the
 	   platform */
 /* NOTE: Only adding one overflow on PAPI_event -- no overflow for PAPI_TOT_CYC*/
 	EventSet =
-		add_two_nonderived_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+		add_two_nonderived_events( &num_events1, &PAPI_event, &mask1 );
 
 	values = allocate_test_space( 2, num_events1 );
 

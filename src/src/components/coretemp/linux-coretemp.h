@@ -4,7 +4,7 @@
 
 /** 
  * @file    linux-coretemp.h
- * CVS:     $Id: linux-coretemp.h,v 1.1 2010/08/31 20:54:23 ralph Exp $
+ * CVS:     $Id$
  * @author  James Ralph
  *			ralph@eecs.utk.edu
  *
@@ -20,8 +20,8 @@
  *  - Based heavily upon the lm-sensors component by Heike Jagode.
  */
 
-#ifndef _PAPI_LMSENSORS_H
-#define _PAPI_LMSENSORS_H
+#ifndef _PAPI_CORETEMP_H
+#define _PAPI_CORETEMP_H
 
 #include <unistd.h>
 #include <dirent.h>
@@ -53,14 +53,14 @@ typedef struct CORETEMP_register
 /** This structure is used to build the table of events */
 typedef struct CORETEMP_native_event_entry
 {
-	/*LM_SENSORS_register_t resources; */
   char name[PAPI_MAX_STR_LEN];
+  char units[PAPI_MIN_STR_LEN];
   char description[PAPI_MAX_STR_LEN];
   char path[PATH_MAX];
   int stone; /* some counters are set in stone, a max temperature is just that... */
   long value;
   CORETEMP_register_t resources;
-} CORETEMP_native_enent_entry_t;
+} CORETEMP_native_event_entry_t;
 
 typedef struct CORETEMP_reg_alloc
 {
@@ -86,4 +86,4 @@ typedef struct CORETEMP_context
  *******************************************************************************/
 
 
-#endif /* _PAPI_LMSENSORS_H */
+#endif /* _PAPI_CORETEMP_H */

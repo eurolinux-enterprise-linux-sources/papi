@@ -1,5 +1,5 @@
 /*
- * $Id: sdsc2.c,v 1.16 2010/08/25 22:08:19 vweaver1 Exp $
+ * $Id$
  *
  * Test example for multiplex functionality, originally 
  * provided by Timothy Kaiser, SDSC. It was modified to fit the 
@@ -101,13 +101,15 @@ main( int argc, char **argv )
 	}
 #endif
 
+	/* What does this code even do? */
 	nevents = MAXEVENTS;
 	for ( i = 0; i < nevents; i++ ) {
 		if ( ( retval = PAPI_add_event( eventset, events[i] ) ) ) {
-			for ( j = i; j < MAXEVENTS; j++ )
+		   for ( j = i; j < MAXEVENTS-1; j++ ) {
 				events[j] = events[j + 1];
-			nevents--;
-			i--;
+		   }
+		   nevents--;
+		   i--;
 		}
 	}
 	if ( nevents < 2 )

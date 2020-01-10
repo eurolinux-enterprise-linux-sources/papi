@@ -20,7 +20,6 @@
 #include <sys/types.h>
 #include <sys/processor.h>
 #include <sys/procset.h>
-#include <sys/ucontext.h>
 #include <syms.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
@@ -74,10 +73,7 @@ typedef struct _native_info
 	int encoding[MAX_COUNTERS];
 } native_info_t;
 
-typedef siginfo_t hwd_siginfo_t;
-typedef ucontext_t hwd_ucontext_t;
-
-#define GET_OVERFLOW_ADDRESS(ctx)  (void*)(ctx.ucontext->uc_mcontext.gregs[REG_PC])
+#include "solaris-context.h"
 
 typedef int hwd_context_t;
 
@@ -92,7 +88,5 @@ extern rwlock_t lock[PAPI_MAX_LOCK];
 #define _papi_hwd_lock(lck) rw_wrlock(&lock[lck]);
 
 #define _papi_hwd_unlock(lck)   rw_unlock(&lock[lck]);
-
-#define MY_VECTOR _solaris_vector
 
 #endif

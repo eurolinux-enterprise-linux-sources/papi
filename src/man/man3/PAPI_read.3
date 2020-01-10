@@ -1,93 +1,83 @@
-.\" $Id: PAPI_read.3,v 1.19 2009/09/10 20:19:38 terpstra Exp $
-.TH PAPI_read 3 "September, 2004" "PAPI Programmer's Reference" "PAPI"
-
+.TH "PAPI_read" 3 "Tue May 21 2013" "Version 5.1.1.0" "PAPI" \" -*- nroff -*-
+.ad l
+.nh
 .SH NAME
-PAPI_read \- read hardware counters from an event set
-.LP
-PAPI_accum \- accumulate and reset counters in an event set
+PAPI_read \- 
+.PP
+Read hardware counters from an event set.  
 
 .SH SYNOPSIS
-.B C Interface
-.nf
-.B #include <papi.h>
-.BI "int\ PAPI_read(int " EventSet ", long_long *" values ");"
-.BI "int\ PAPI_accum(int " EventSet ", long_long *" values ");"
-.fi
-.B Fortran Interface
-.nf
-.B #include "fpapi.h"
-.BI PAPIF_read(C_INT\  EventSet,\  C_LONG_LONG(*)\  values,\  C_INT\  check )
-.BI PAPIF_accum(C_INT\  EventSet,\  C_LONG_LONG(*)\  values,\  C_INT\  check )
-.fi
-
-.SH DESCRIPTION
-
-These calls assume an initialized PAPI library and a properly added
-event set.
-
-.B PAPI_read()
-copies the counters of the indicated event set into 
-the array
-.IR values .
+.br
+.PP
+.SH "Detailed Description"
+.PP 
+\fBC Interface:\fP
+.RS 4
+#include <\fBpapi.h\fP> 
+.br
+ int PAPI_read(int  EventSet, long_long * values );
+.RE
+.PP
+PAPI_read() copies the counters of the indicated event set into the provided array.
+.PP
 The counters continue counting after the read.
-.LP
-.B PAPI_accum()
-adds the counters of the indicated event set into the array
-.IR values .
-The counters are zeroed and continue counting after the operation.
-.LP
-Note the differences between PAPI_read() and PAPI_accum(), 
-specifically that PAPI_accum() resets the values array to zero.
+.PP
+Note the differences between PAPI_read() and PAPI_accum(), specifically that PAPI_accum() resets the values array to zero.
+.PP
+PAPI_read() assumes an initialized PAPI library and a properly added event set.
+.PP
+\fBParameters:\fP
+.RS 4
+\fIEventSet\fP -- an integer handle for a PAPI Event Set as created by PAPI_create_eventset() 
+.br
+\fI*values\fP -- an array to hold the counter values of the counting events
+.RE
+.PP
+\fBReturn values:\fP
+.RS 4
+\fIPAPI_EINVAL\fP One or more of the arguments is invalid. 
+.br
+\fIPAPI_ESYS\fP A system or C library call failed inside PAPI, see the errno variable. 
+.br
+\fIPAPI_ENOEVST\fP The event set specified does not exist.
+.RE
+.PP
+\fBExamples\fP
+.RS 4
 
-
-.SH ARGUMENTS
-.I EventSet
---  an integer handle for a PAPI Event Set as created by
-.BR "PAPI_create_eventset" (3)
-.LP
-.I *values
--- an array to hold the counter values of the counting events
-
-.SH RETURN VALUES
-On success, these functions return
-.B "PAPI_OK."
- On error, a non-zero error code is returned.
-
-.SH ERRORS
-.TP
-.B "PAPI_EINVAL"
-One or more of the arguments is invalid.
-.TP
-.B "PAPI_ESYS"
-A system or C library call failed inside PAPI, see the 
-.I "errno"
-variable.
-.TP
-.B "PAPI_ENOEVST"
-The event set specified does not exist.
-
-.SH EXAMPLES
+.PP
 .nf
-.if t .ft CW
-  do_100events();
-  if (PAPI_read(EventSet, values) != PAPI_OK)
+ do_100events();
+ if (PAPI_read(EventSet, values) != PAPI_OK)
     handle_error(1);
-  /* values[0] now equals 100 */
-  do_100events();
-  if (PAPI_accum(EventSet, values) != PAPI_OK)
+ // values[0] now equals 100
+ do_100events();
+ if (PAPI_accum(EventSet, values) != PAPI_OK)
     handle_error(1);
-  /* values[0] now equals 200 */
-  values[0] = -100;
-  do_100events();
-  if (PAPI_accum(EventSet, values) != PAPI_OK)
-    handle_error(1);
-  /* values[0] now equals 0 */
-.if t .ft P
+ // values[0] now equals 200
+ values[0] = -100;
+ do_100events();
+ if (PAPI_accum(EventSet, values) != PAPI_OK)
+     handle_error(1);
+ // values[0] now equals 0 
+
 .fi
+.PP
+.RE
+.PP
+\fBSee also:\fP
+.RS 4
+\fBPAPI_accum\fP 
+.PP
+\fBPAPI_start\fP 
+.PP
+\fBPAPI_stop\fP 
+.PP
+\fBPAPI_reset\fP 
+.RE
+.PP
 
-.SH BUGS
-These functions have no known bugs.
 
-.SH SEE ALSO
-.BR PAPI_set_opt "(3), " PAPI_reset "(3), " 
-.BR PAPI_start "(3), " PAPI "(3), " PAPIF "(3)"
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for PAPI from the source code.

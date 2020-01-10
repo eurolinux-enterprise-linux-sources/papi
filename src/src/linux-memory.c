@@ -16,17 +16,19 @@
 *          memory detection info this file.
 */
 
+#include <dirent.h>
+#include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "papi.h"
 #include "papi_internal.h"
 #include "papi_memory.h" /* papi_calloc() */
 
-#include SUBSTRATE
+#include "x86_cpuid_info.h"
 
-extern int x86_cache_info( PAPI_mh_info_t * mh_info );
-
+#include "linux-lock.h"
 
 /* 2.6.19 has this:
 VmPeak:     4588 kB
@@ -55,7 +57,7 @@ _linux_get_dmem_info( PAPI_dmem_info_t * d )
 	f = fopen( fn, "r" );
 	if ( f == NULL ) {
 		PAPIERROR( "fopen(%s): %s\n", fn, strerror( errno ) );
-		return PAPI_ESBSTR;
+		return PAPI_ESYS;
 	}
 	while ( 1 ) {
 		if ( fgets( tmp, PATH_MAX, f ) == NULL )
@@ -107,14 +109,15 @@ _linux_get_dmem_info( PAPI_dmem_info_t * d )
 	f = fopen( fn, "r" );
 	if ( f == NULL ) {
 		PAPIERROR( "fopen(%s): %s\n", fn, strerror( errno ) );
-		return PAPI_ESBSTR;
+		return PAPI_ESYS;
 	}
 	ret =
 		fscanf( f, "%lld %lld %lld %lld %lld %lld %lld", &dum, &dum, &shr, &dum,
 				&dum, &dat, &dum );
 	if ( ret != 7 ) {
 		PAPIERROR( "fscanf(7 items): %d\n", ret );
-		return PAPI_ESBSTR;
+		fclose(f);
+		return PAPI_ESYS;
 	}
 	d->pagesize = getpagesize(  );
 	d->shared = ( shr * d->pagesize ) / 1024;
@@ -134,16 +137,14 @@ x86_get_memory_info( PAPI_hw_info_t * hw_info )
 {
 	int retval = PAPI_OK;
 
-	extern int x86_cache_info( PAPI_mh_info_t * mh_info );
-
 	switch ( hw_info->vendor ) {
 	case PAPI_VENDOR_AMD:
 	case PAPI_VENDOR_INTEL:
-		retval = x86_cache_info( &hw_info->mem_hierarchy );
+		retval = _x86_cache_info( &hw_info->mem_hierarchy );
 		break;
 	default:
 		PAPIERROR( "Unknown vendor in memory information call for x86." );
-		return PAPI_ESBSTR;
+		return PAPI_ENOIMPL;
 	}
 	return retval;
 }
@@ -599,6 +600,8 @@ ppc64_get_memory_info( PAPI_hw_info_t * hw_info )
 }
 #endif
 
+
+
 #if defined(__sparc__)
 static int
 sparc_sysfs_cpu_attr( char *name, char **result )
@@ -681,9 +684,9 @@ static int
 sparc_get_memory_info( PAPI_hw_info_t * hw_info )
 {
 	unsigned long long cache_size, cache_line_size;
-	unsigned long long cycles_per_second;
+	/* unsigned long long cycles_per_second; */
 	char maxargs[PAPI_HUGE_STR_LEN];
-	PAPI_mh_tlb_info_t *tlb;
+	/* PAPI_mh_tlb_info_t *tlb; */
 	PAPI_mh_level_t *level;
 	char *s, *t;
 	FILE *f;
@@ -714,6 +717,7 @@ sparc_get_memory_info( PAPI_hw_info_t * hw_info )
 
 	fclose( f );
 
+	/*
 	if ( sparc_sysfs_cpu_attr( "clock_tick", &s ) == -1 )
 		return PAPI_ESYS;
 
@@ -722,6 +726,7 @@ sparc_get_memory_info( PAPI_hw_info_t * hw_info )
 
 	hw_info->mhz = cycles_per_second / 1000000;
 	hw_info->clock_mhz = hw_info->mhz;
+	*/
 
 	/* Now fetch the cache info */
 	hw_info->mem_hierarchy.levels = 3;
@@ -752,7 +757,8 @@ sparc_get_memory_info( PAPI_hw_info_t * hw_info )
 	level[1].cache[0].num_lines = cache_size / cache_line_size;
 	level[1].cache[0].associativity = 1;
 
-	tlb = &hw_info->mem_hierarchy.level[0].tlb[0];
+#if 0
+   	tlb = &hw_info->mem_hierarchy.level[0].tlb[0];
 	switch ( _perfmon2_pfm_pmu_type ) {
 	case PFMLIB_SPARC_ULTRA12_PMU:
 		tlb[0].type = PAPI_MH_TYPE_INST | PAPI_MH_TYPE_PSEUDO_LRU;
@@ -811,10 +817,25 @@ sparc_get_memory_info( PAPI_hw_info_t * hw_info )
 		tlb[1].associativity = SHRT_MAX;
 		break;
 	}
-
+#endif
 	return 0;
 }
 #endif
+
+/* FIXME:  have code read the /sys/ cpu files to gather cache info */
+/*         in cases where we can't otherwise get cache size data   */
+
+int
+generic_get_memory_info( PAPI_hw_info_t * hw_info )
+{
+
+
+	/* Now fetch the cache info */
+	hw_info->mem_hierarchy.levels = 0;
+
+	return 0;
+}
+
 
 int
 _linux_get_memory_info( PAPI_hw_info_t * hwinfo, int cpu_type )
@@ -830,8 +851,11 @@ _linux_get_memory_info( PAPI_hw_info_t * hwinfo, int cpu_type )
 	ppc64_get_memory_info( hwinfo );
 #elif defined(__sparc__)
 	sparc_get_memory_info( hwinfo );
+#elif defined(__arm__)
+	#warning "WARNING! linux_get_memory_info() does nothing on ARM!"
+        generic_get_memory_info (hwinfo);
 #else
-#error "No support for this architecture. Please modify linux-memory.c"
+        generic_get_memory_info (hwinfo);
 #endif
 
 	return retval;
@@ -956,6 +980,7 @@ _linux_update_shlib_info( papi_mdi_t *mdi )
 												  ( PAPI_address_map_t ) );
 		if ( tmp == NULL ) {
 			PAPIERROR( "Error allocating shared library address map" );
+			fclose(f);
 			return PAPI_ENOMEM;
 		}
 		t_index = 0;

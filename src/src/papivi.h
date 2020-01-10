@@ -4,7 +4,7 @@
 
 /* 
 * File:    papivi.h
-* CVS:     $Id: papivi.h,v 1.6 2010/02/22 18:36:02 jagode Exp $
+* CVS:     $Id$
 * Author:  dan terpstra
 *          terpstra@cs.utk.edu
 * Mods:    your name here
@@ -214,9 +214,9 @@ typedef struct _papi_mh_info
 */
 typedef struct _papi3_hw_info
 {
-	int ncpu;						   /* Number of CPU's in an SMP Node */
+	int ncpu;						   /* Number of CPUs in an SMP Node */
 	int nnodes;						   /* Number of Nodes in the entire system */
-	int totalcpus;					   /* Total number of CPU's in the entire system */
+	int totalcpus;					   /* Total number of CPUs in the entire system */
 	int vendor;						   /* Vendor number of CPU */
 	char vendor_string[PAPI_MAX_STR_LEN];	/* Vendor string of CPU */
 	int model;						   /* Model number of CPU */
@@ -561,8 +561,8 @@ static int PAPI_get_multiplex(int EventSet)
           PAPI_num_hwctrs
 #define PAPIvi_overflow(EventSet, EventCode, threshold, flags, handler) \
           PAPI_overflow(EventSet, EventCode, threshold, flags, handler)
-#define PAPIvi_perror(code, destination, length) \
-          PAPI_perror(code, destination, length)
+#define PAPIvi_perror( s ) \
+          PAPI_perror( s )
 #define PAPIvi_query_event(EventCode) \
           PAPI_query_event(EventCode)
 #define PAPIvi_read(EventSet, values) \
@@ -759,8 +759,8 @@ int PAPI_save(void);
           PAPI_num_events(EventSet)
 #define PAPIvi_overflow(EventSet, EventCode, threshold, flags, handler) \
           PAPI_overflow(EventSet, EventCode, threshold, flags, handler)
-#define PAPIvi_perror(code, destination, length) \
-          PAPI_perror(code, destination, length)
+#define PAPIvi_perror( s ) \
+          PAPI_perror( s )
 #define PAPIvi_profil(buf, bufsiz, offset, scale, EventSet, EventCode, threshold, flags) \
           PAPI_profil(buf, bufsiz, offset, scale, EventSet, EventCode, threshold, flags)
 #define PAPIvi_query_event(EventCode) \

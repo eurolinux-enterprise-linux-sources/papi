@@ -1,12 +1,8 @@
-/****************************/
-/* THIS IS OPEN SOURCE CODE */
-/****************************/
-
 /**
  * @file    example.c
  * @author  Joachim Protze
  *          joachim.protze@zih.tu-dresden.de
- * @author	Vince Weaver
+ * @author  Vince Weaver
  *          vweaver1@eecs.utk.edu
  *
  * @ingroup papi_components
@@ -24,26 +20,36 @@
 /* Headers required by PAPI */
 #include "papi.h"
 #include "papi_internal.h"
-#include "papi_memory.h"
+#include "papi_vector.h"
+#include "papi_memory.h"    /* defines papi_malloc(), etc. */
 
-/** This driver supports two counters */
-#define EXAMPLE_MAX_COUNTERS 3
+/** This driver supports three counters counting at once      */
+/*  This is artificially low to allow testing of multiplexing */
+#define EXAMPLE_MAX_SIMULTANEOUS_COUNTERS 3
+#define EXAMPLE_MAX_MULTIPLEX_COUNTERS 4
+
+/* Declare our vector in advance */
+/* This allows us to modify the component info */
+papi_vector_t _example_vector;
 
 /** Structure that stores private information for each event */
 typedef struct example_register
 {
-	unsigned int selector;
-						 /**< Signifies which counter slot is being used */
-						 /**< Indexed from 1 as 0 has a special meaning  */
+   unsigned int selector;
+		           /**< Signifies which counter slot is being used */
+			   /**< Indexed from 1 as 0 has a special meaning  */
 } example_register_t;
 
-/** This structure is used to build the table of events */
+/** This structure is used to build the table of events  */
+/*   The contents of this structure will vary based on   */
+/*   your component, however having name and description */
+/*   fields are probably useful.                         */
 typedef struct example_native_event_entry
 {
-	example_register_t resources;		  /**< Per counter resources       */
-	char name[PAPI_MAX_STR_LEN];	   /**< Name of the counter         */
-	char description[PAPI_MAX_STR_LEN];/**< Description of the counter  */
-	int writable;					   /**< Whether counter is writable */
+	example_register_t resources;	    /**< Per counter resources       */
+	char name[PAPI_MAX_STR_LEN];	    /**< Name of the counter         */
+	char description[PAPI_MAX_STR_LEN]; /**< Description of the counter  */
+	int writable;			    /**< Whether counter is writable */
 	/* any other counter parameters go here */
 } example_native_event_entry_t;
 
@@ -55,52 +61,66 @@ typedef struct example_reg_alloc
 	example_register_t ra_bits;
 } example_reg_alloc_t;
 
-/** Holds control flags, usually out-of band configuration of the hardware */
+/** Holds control flags.  
+ *    There's one of these per event-set.
+ *    Use this to hold data specific to the EventSet, either hardware
+ *      counter settings or things like counter start values 
+ */
 typedef struct example_control_state
 {
-	long_long counter[EXAMPLE_MAX_COUNTERS];	/**< Copy of counts, used for caching */
-	long_long lastupdate;			   /**< Last update time, used for caching */
+  int num_events;
+  int domain;
+  int multiplexed;
+  int overflow;
+  int inherit;
+  int which_counter[EXAMPLE_MAX_SIMULTANEOUS_COUNTERS]; 
+  long long counter[EXAMPLE_MAX_MULTIPLEX_COUNTERS];   /**< Copy of counts, holds results when stopped */
 } example_control_state_t;
 
 /** Holds per-thread information */
 typedef struct example_context
 {
-	example_control_state_t state;
+     long long autoinc_value;
 } example_context_t;
 
 /** This table contains the native events */
 static example_native_event_entry_t *example_native_table;
+
 /** number of events in the table*/
-static int NUM_EVENTS = 1;
+static int num_events = 0;
 
 
-/************************************************************************/
+/*************************************************************************/
 /* Below is the actual "hardware implementation" of our example counters */
-/************************************************************************/
+/*************************************************************************/
 
-#define EXAMPLE_ZERO_REG     0
-#define EXAMPLE_CONSTANT_REG 1
-#define EXAMPLE_AUTOINC_REG  2
+#define EXAMPLE_ZERO_REG             0
+#define EXAMPLE_CONSTANT_REG         1
+#define EXAMPLE_AUTOINC_REG          2
+#define EXAMPLE_GLOBAL_AUTOINC_REG   3
 
-static long_long example_autoinc_value = 0;
+#define EXAMPLE_TOTAL_EVENTS         4
+
+static long long example_global_autoinc_value = 0;
 
 /** Code that resets the hardware.  */
 static void
-example_hardware_reset(  )
+example_hardware_reset( example_context_t *ctx )
 {
-
-	example_autoinc_value = 0;
+   /* reset per-thread count */
+   ctx->autoinc_value=0;
+   /* reset global count */
+   example_global_autoinc_value = 0;
 
 }
 
-/** Code that reads event values.
-    You might replace this with code that accesses
-    hardware or reads values from the operatings system. */
-static long_long
-example_hardware_read( int which_one )
+/** Code that reads event values.                         */
+/*   You might replace this with code that accesses       */
+/*   hardware or reads values from the operatings system. */
+static long long
+example_hardware_read( int which_one, example_context_t *ctx )
 {
-
-	long_long old_value;
+	long long old_value;
 
 	switch ( which_one ) {
 	case EXAMPLE_ZERO_REG:
@@ -108,31 +128,55 @@ example_hardware_read( int which_one )
 	case EXAMPLE_CONSTANT_REG:
 		return 42;
 	case EXAMPLE_AUTOINC_REG:
-		old_value = example_autoinc_value;
-		example_autoinc_value++;
+		old_value = ctx->autoinc_value;
+		ctx->autoinc_value++;
+		return old_value;
+	case EXAMPLE_GLOBAL_AUTOINC_REG:
+		old_value = example_global_autoinc_value;
+		example_global_autoinc_value++;
 		return old_value;
 	default:
-		perror( "Invalid counter read" );
+	        fprintf(stderr,"Invalid counter read %x\n",which_one );
 		return -1;
 	}
 
 	return 0;
 }
 
+/** Code that writes event values.                        */
+static int
+example_hardware_write( int which_one, 
+			example_context_t *ctx,
+			long long value)
+{
+
+	switch ( which_one ) {
+	case EXAMPLE_ZERO_REG:
+	case EXAMPLE_CONSTANT_REG:
+		return PAPI_OK; /* can't be written */
+	case EXAMPLE_AUTOINC_REG:
+		ctx->autoinc_value=value;
+		return PAPI_OK;
+	case EXAMPLE_GLOBAL_AUTOINC_REG:
+	        example_global_autoinc_value=value;
+		return PAPI_OK;
+	default:
+		perror( "Invalid counter write" );
+		return -1;
+	}
+
+	return 0;
+}
+
+static int
+detect_example(void) {
+ 
+   return PAPI_OK;
+}
+
 /********************************************************************/
 /* Below are the functions required by the PAPI component interface */
 /********************************************************************/
-
-/** This is called whenever a thread is initialized */
-int
-example_init( hwd_context_t * ctx )
-{
-	SUBDBG( "example_init %p...", ctx );
-
-	/* FIXME: do we need to make this thread safe? */
-
-	return PAPI_OK;
-}
 
 
 /** Initialize hardware counters, setup the function vector table
@@ -140,180 +184,149 @@ example_init( hwd_context_t * ctx )
  * PAPI process is initialized (IE PAPI_library_init)
  */
 int
-example_init_substrate(  )
+_example_init_component( int cidx )
 {
 
-	SUBDBG( "example_init_substrate..." );
+	SUBDBG( "_example_init_component..." );
 
+   
+        /* First, detect that our hardware is available */
+        if (detect_example()!=PAPI_OK) {
+	   return PAPI_ECMP;
+	}
+   
 	/* we know in advance how many events we want                       */
 	/* for actual hardware this might have to be determined dynamically */
-	NUM_EVENTS = 3;
+	num_events = EXAMPLE_TOTAL_EVENTS;
 
-	/* Make sure we don't allocate too many counters.                 */
-	/* This could be avoided if we dynamically allocate counter space */
-	/*   when needed.                                                 */
-	if ( NUM_EVENTS > EXAMPLE_MAX_COUNTERS ) {
-		perror( "Too many counters allocated" );
-		return EXIT_FAILURE;
-	}
-
-	/* Allocate memory for the our event table */
+	/* Allocate memory for the our native event table */
 	example_native_table =
 		( example_native_event_entry_t * )
-		malloc( sizeof ( example_native_event_entry_t ) * NUM_EVENTS );
+		papi_calloc( sizeof(example_native_event_entry_t),num_events);
 	if ( example_native_table == NULL ) {
-		perror( "malloc():Could not get memory for events table" );
-		return EXIT_FAILURE;
+		PAPIERROR( "malloc():Could not get memory for events table" );
+		return PAPI_ENOMEM;
 	}
 
 	/* fill in the event table parameters */
+	/* for complicated components this will be done dynamically */
+	/* or by using an external library                          */
+
 	strcpy( example_native_table[0].name, "EXAMPLE_ZERO" );
 	strcpy( example_native_table[0].description,
-			"This is a example counter, that always returns 0" );
+			"This is an example counter, that always returns 0" );
 	example_native_table[0].writable = 0;
 
 	strcpy( example_native_table[1].name, "EXAMPLE_CONSTANT" );
 	strcpy( example_native_table[1].description,
-			"This is a example counter, that always returns a constant value of 42" );
+			"This is an example counter, that always returns a constant value of 42" );
 	example_native_table[1].writable = 0;
 
 	strcpy( example_native_table[2].name, "EXAMPLE_AUTOINC" );
 	strcpy( example_native_table[2].description,
-			"This is a example counter, that reports an auto-incrementing value" );
+			"This is an example counter, that reports a per-thread  auto-incrementing value" );
 	example_native_table[2].writable = 1;
 
-	/* The selector has to be !=0 . Starts with 1 */
-	example_native_table[0].resources.selector = 1;
-	example_native_table[1].resources.selector = 2;
-	example_native_table[2].resources.selector = 3;
+	strcpy( example_native_table[3].name, "EXAMPLE_GLOBAL_AUTOINC" );
+	strcpy( example_native_table[3].description,
+			"This is an example counter, that reports a global auto-incrementing value" );
+	example_native_table[3].writable = 1;
+
+	/* Export the total number of events available */
+	_example_vector.cmp_info.num_native_events = num_events;
+
+	/* Export the component id */
+	_example_vector.cmp_info.CmpIdx = cidx;
+
+	
+
+	return PAPI_OK;
+}
+
+/** This is called whenever a thread is initialized */
+int
+_example_init_thread( hwd_context_t *ctx )
+{
+
+        example_context_t *example_context = (example_context_t *)ctx;
+
+        example_context->autoinc_value=0;
+   
+	SUBDBG( "_example_init_thread %p...", ctx );
 
 	return PAPI_OK;
 }
 
 
-/** Setup the counter control structure */
-int
-example_init_control_state( hwd_control_state_t * ctrl )
-{
-	SUBDBG( "example_init_control_state..." );
 
-	/* set the hardware to initial conditions */
-	example_hardware_reset(  );
-
-	/* set the counters last-accessed time */
-	( ( example_control_state_t * ) ctrl )->lastupdate = PAPI_get_real_usec(  );
-
-	return PAPI_OK;
-}
-
-
-/** Enumerate Native Events 
-   @param EventCode is the event of interest
-   @param modifier is one of PAPI_ENUM_FIRST, PAPI_ENUM_EVENTS
-*/
-int
-example_ntv_enum_events( unsigned int *EventCode, int modifier )
-{
-	int cidx = PAPI_COMPONENT_INDEX( *EventCode );
-
-	switch ( modifier ) {
-
-		/* return EventCode of first event */
-	case PAPI_ENUM_FIRST:
-		*EventCode = PAPI_NATIVE_MASK | PAPI_COMPONENT_MASK( cidx );
-		return PAPI_OK;
-		break;
-
-		/* return EventCode of passed-in Event */
-	case PAPI_ENUM_EVENTS:{
-		int index = *EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-		if ( index < NUM_EVENTS - 1 ) {
-			*EventCode = *EventCode + 1;
-			return PAPI_OK;
-		} else {
-			return PAPI_ENOEVNT;
-		}
-		break;
-	}
-	default:
-		return PAPI_EINVAL;
-	}
-
-	return PAPI_EINVAL;
-}
-
-/** Takes a native event code and passes back the name 
- @param EventCode is the native event code
- @param name is a pointer for the name to be copied to
- @param len is the size of the string
+/** Setup a counter control state.
+ *   In general a control state holds the hardware info for an
+ *   EventSet.
  */
+
 int
-example_ntv_code_to_name( unsigned int EventCode, char *name, int len )
+_example_init_control_state( hwd_control_state_t * ctl )
 {
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+   SUBDBG( "example_init_control_state... %p\n", ctl );
 
-	strncpy( name, example_native_table[index].name, len );
+   example_control_state_t *example_ctl = ( example_control_state_t * ) ctl;
+   memset( example_ctl, 0, sizeof ( example_control_state_t ) );
 
-	return PAPI_OK;
+   return PAPI_OK;
 }
 
-/** Takes a native event code and passes back the event description
- @param EventCode is the native event code
- @param name is a pointer for the description to be copied to
- @param len is the size of the string
- */
-int
-example_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
-{
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-	strncpy( name, example_native_table[index].description, len );
-
-	return PAPI_OK;
-}
-
-/** This takes an event and returns the bits that would be written
-    out to the hardware device (this is very much tied to CPU-type support */
-int
-example_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
-{
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-	SUBDBG( "Want native bits for event %d", index );
-
-	return PAPI_OK;
-}
 
 /** Triggered by eventset operations like add or remove */
 int
-example_update_control_state( hwd_control_state_t * ptr, NativeInfo_t * native,
-							  int count, hwd_context_t * ctx )
+_example_update_control_state( hwd_control_state_t *ctl, 
+				    NativeInfo_t *native,
+				    int count, 
+				    hwd_context_t *ctx )
 {
-	int i, index;
+   
+   (void) ctx;
+   int i, index;
 
-	SUBDBG( "example_update_control_state %p %p...", ptr, ctx );
+   example_control_state_t *example_ctl = ( example_control_state_t * ) ctl;   
 
-	for ( i = 0; i < count; i++ ) {
-		index =
-			native[i].ni_event & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-		native[i].ni_position =
-			example_native_table[index].resources.selector - 1;
-		SUBDBG
-			( "\nnative[%i].ni_position = example_native_table[%i].resources.selector-1 = %i;",
-			  i, index, native[i].ni_position );
-	}
+   SUBDBG( "_example_update_control_state %p %p...", ctl, ctx );
 
-	return PAPI_OK;
+   /* if no events, return */
+   if (count==0) return PAPI_OK;
+
+   for( i = 0; i < count; i++ ) {
+      index = native[i].ni_event;
+      
+      /* Map counter #i to Measure Event "index" */
+      example_ctl->which_counter[i]=index;
+
+      /* We have no constraints on event position, so any event */
+      /* can be in any slot.                                    */
+      native[i].ni_position = i;
+   }
+
+   example_ctl->num_events=count;
+
+   return PAPI_OK;
 }
 
 /** Triggered by PAPI_start() */
 int
-example_start( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_example_start( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
-	SUBDBG( "example_start %p %p...", ctx, ctrl );
+
+        (void) ctx;
+        (void) ctl;
+
+	SUBDBG( "example_start %p %p...", ctx, ctl );
 
 	/* anything that would need to be set at counter start time */
+
+	/* reset counters? */
+        /* For hardware that cannot reset counters, store initial        */
+        /*     counter state to the ctl and subtract it off at read time */
+	 
+	/* start the counting ?*/
 
 	return PAPI_OK;
 }
@@ -321,87 +334,138 @@ example_start( hwd_context_t * ctx, hwd_control_state_t * ctrl )
 
 /** Triggered by PAPI_stop() */
 int
-example_stop( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_example_stop( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
-	SUBDBG( "example_stop %p %p...", ctx, ctrl );
+
+        (void) ctx;
+        (void) ctl;
+
+	SUBDBG( "example_stop %p %p...", ctx, ctl );
 
 	/* anything that would need to be done at counter stop time */
+
+	
 
 	return PAPI_OK;
 }
 
 
-/** Triggered by PAPI_read() */
+/** Triggered by PAPI_read()     */
+/*     flags field is never set? */
 int
-example_read( hwd_context_t * ctx, hwd_control_state_t * ctrl,
-			  long_long ** events, int flags )
+_example_read( hwd_context_t *ctx, hwd_control_state_t *ctl,
+			  long long **events, int flags )
 {
-	SUBDBG( "example_read... %p %d", ctx, flags );
 
-	( ( example_control_state_t * ) ctrl )->counter[0] =
-		example_hardware_read( EXAMPLE_ZERO_REG );
-	( ( example_control_state_t * ) ctrl )->counter[1] =
-		example_hardware_read( EXAMPLE_CONSTANT_REG );
-	( ( example_control_state_t * ) ctrl )->counter[2] =
-		example_hardware_read( EXAMPLE_AUTOINC_REG );
+   (void) flags;
 
-	*events = ( ( example_control_state_t * ) ctrl )->counter;	// serve cached data
+   example_context_t *example_ctx = (example_context_t *) ctx;
+   example_control_state_t *example_ctl = ( example_control_state_t *) ctl;   
 
-	return PAPI_OK;
+   SUBDBG( "example_read... %p %d", ctx, flags );
+
+   int i;
+
+   /* Read counters into expected slot */
+   for(i=0;i<example_ctl->num_events;i++) {
+      example_ctl->counter[i] =
+		example_hardware_read( example_ctl->which_counter[i], 
+				       example_ctx );
+   }
+
+   /* return pointer to the values we read */
+   *events = example_ctl->counter;
+
+   return PAPI_OK;
 }
 
 /** Triggered by PAPI_write(), but only if the counters are running */
 /*    otherwise, the updated state is written to ESI->hw_start      */
 int
-example_write( hwd_context_t * ctx, hwd_control_state_t * ctrl,
-			   long_long events[] )
+_example_write( hwd_context_t *ctx, hwd_control_state_t *ctl,
+			   long long *events )
 {
-	SUBDBG( "example_write... %p %p", ctx, ctrl );
 
-	/* FIXME... this should actually carry out the write, though     */
-	/*  this is non-trivial as which counter being written has to be */
-	/*  determined somehow.                                          */
+        example_context_t *example_ctx = (example_context_t *) ctx;
+        example_control_state_t *example_ctl = ( example_control_state_t *) ctl;   
+   
+        int i;
+   
+	SUBDBG( "example_write... %p %p", ctx, ctl );
 
+        /* Write counters into expected slot */
+        for(i=0;i<example_ctl->num_events;i++) {
+	   example_hardware_write( example_ctl->which_counter[i],
+				   example_ctx,
+				   events[i] );
+	}
+   
 	return PAPI_OK;
 }
 
 
-/** Triggered by PAPI_reset */
+/** Triggered by PAPI_reset() but only if the EventSet is currently running */
+/*  If the eventset is not currently running, then the saved value in the   */
+/*  EventSet is set to zero without calling this routine.                   */
 int
-example_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_example_reset( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
-	SUBDBG( "example_reset ctx=%p ctrl=%p...", ctx, ctrl );
+        example_context_t *event_ctx = (example_context_t *)ctx;
+	(void) ctl;
+
+	SUBDBG( "example_reset ctx=%p ctrl=%p...", ctx, ctl );
 
 	/* Reset the hardware */
-	example_hardware_reset(  );
-	/* Set the counters last-accessed time */
-	( ( example_control_state_t * ) ctrl )->lastupdate = PAPI_get_real_usec(  );
+	example_hardware_reset( event_ctx );
 
 	return PAPI_OK;
 }
 
 /** Triggered by PAPI_shutdown() */
 int
-example_shutdown( hwd_context_t * ctx )
+_example_shutdown_component(void)
 {
-	SUBDBG( "example_shutdown... %p", ctx );
 
-	/* Last chance to clean up */
+	SUBDBG( "example_shutdown_component..." );
+
+        /* Free anything we allocated */
+   
+	papi_free(example_native_table);
+
+	return PAPI_OK;
+}
+
+/** Called at thread shutdown */
+int
+_example_shutdown_thread( hwd_context_t *ctx )
+{
+
+        (void) ctx;
+
+	SUBDBG( "example_shutdown_thread... %p", ctx );
+
+	/* Last chance to clean up thread */
 
 	return PAPI_OK;
 }
 
 
-/** This function sets various options in the substrate
-  @param code valid are PAPI_SET_DEFDOM, PAPI_SET_DOMAIN, PAPI_SETDEFGRN, PAPI_SET_GRANUL and PAPI_SET_INHERIT
+
+/** This function sets various options in the component
+  @param[in] ctx -- hardware context
+  @param[in] code valid are PAPI_SET_DEFDOM, PAPI_SET_DOMAIN, 
+                        PAPI_SETDEFGRN, PAPI_SET_GRANUL and PAPI_SET_INHERIT
+  @param[in] option -- options to be set
  */
 int
-example_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
+_example_ctl( hwd_context_t *ctx, int code, _papi_int_option_t *option )
 {
-	SUBDBG( "example_ctl..." );
 
-	/* FIXME.  This should maybe set up more state, such as which counters are active and */
-	/*         counter mappings. */
+        (void) ctx;
+	(void) code;
+	(void) option;
+
+	SUBDBG( "example_ctl..." );
 
 	return PAPI_OK;
 }
@@ -416,8 +480,10 @@ example_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
     PAPI_DOM_ALL   is all of the domains
  */
 int
-example_set_domain( hwd_control_state_t * cntrl, int domain )
+_example_set_domain( hwd_control_state_t * cntrl, int domain )
 {
+        (void) cntrl;
+
 	int found = 0;
 	SUBDBG( "example_set_domain..." );
 
@@ -444,61 +510,176 @@ example_set_domain( hwd_control_state_t * cntrl, int domain )
 }
 
 
+/**************************************************************/
+/* Naming functions, used to translate event numbers to names */
+/**************************************************************/
+
+
+/** Enumerate Native Events
+ *   @param EventCode is the event of interest
+ *   @param modifier is one of PAPI_ENUM_FIRST, PAPI_ENUM_EVENTS
+ *  If your component has attribute masks then these need to
+ *   be handled here as well.
+ */
+int
+_example_ntv_enum_events( unsigned int *EventCode, int modifier )
+{
+  int index;
+
+
+  switch ( modifier ) {
+
+		/* return EventCode of first event */
+	case PAPI_ENUM_FIRST:
+	   /* return the first event that we support */
+
+	   *EventCode = 0;
+	   return PAPI_OK;
+
+		/* return EventCode of next available event */
+	case PAPI_ENUM_EVENTS:
+	   index = *EventCode;
+
+	   /* Make sure we have at least 1 more event after us */
+	   if ( index < num_events - 1 ) {
+
+	      /* This assumes a non-sparse mapping of the events */
+	      *EventCode = *EventCode + 1;
+	      return PAPI_OK;
+	   } else {
+	      return PAPI_ENOEVNT;
+	   }
+	   break;
+	
+	default:
+	   return PAPI_EINVAL;
+  }
+
+  return PAPI_EINVAL;
+}
+
+/** Takes a native event code and passes back the name 
+ * @param EventCode is the native event code
+ * @param name is a pointer for the name to be copied to
+ * @param len is the size of the name string
+ */
+int
+_example_ntv_code_to_name( unsigned int EventCode, char *name, int len )
+{
+  int index;
+
+  index = EventCode;
+
+  /* Make sure we are in range */
+  if (index >= 0 && index < num_events) {
+     strncpy( name, example_native_table[index].name, len );  
+     return PAPI_OK;
+  }
+   
+  return PAPI_ENOEVNT;
+}
+
+/** Takes a native event code and passes back the event description
+ * @param EventCode is the native event code
+ * @param descr is a pointer for the description to be copied to
+ * @param len is the size of the descr string
+ */
+int
+_example_ntv_code_to_descr( unsigned int EventCode, char *descr, int len )
+{
+  int index;
+  index = EventCode;
+
+  /* make sure event is in range */
+  if (index >= 0 && index < num_events) {
+     strncpy( descr, example_native_table[index].description, len );
+     return PAPI_OK;
+  }
+  
+  return PAPI_ENOEVNT;
+}
+
 /** Vector that points to entry points for our component */
 papi_vector_t _example_vector = {
 	.cmp_info = {
-				 /* default component information (unspecified values are initialized to 0) */
-				 .name = "$Id: example.c,v 1.4 2010/06/18 20:53:19 vweaver1 Exp $",
-				 .version = "$Revision: 1.4 $",
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
-				 .num_cntrs = EXAMPLE_MAX_COUNTERS,
-				 .default_domain = PAPI_DOM_USER,
-				 .available_domains = PAPI_DOM_USER,
-				 .default_granularity = PAPI_GRN_THR,
-				 .available_granularities = PAPI_GRN_THR,
-				 .hardware_intr_sig = PAPI_INT_SIGNAL,
+		/* default component information */
+		/* (unspecified values are initialized to 0) */
+                /* we explicitly set them to zero in this example */
+                /* to show what settings are available            */
 
-				 /* component specific cmp_info initializations */
-				 .fast_real_timer = 0,
-				 .fast_virtual_timer = 0,
-				 .attach = 0,
-				 .attach_must_ptrace = 0,
-				 }
-	,
+		.name = "example",
+		.short_name = "example",
+		.description = "A simple example component",
+		.version = "1.15",
+		.support_version = "n/a",
+		.kernel_version = "n/a",
+		.num_cntrs =               EXAMPLE_MAX_SIMULTANEOUS_COUNTERS, 
+		.num_mpx_cntrs =           EXAMPLE_MAX_SIMULTANEOUS_COUNTERS,
+		.default_domain =          PAPI_DOM_USER,
+		.available_domains =       PAPI_DOM_USER,
+		.default_granularity =     PAPI_GRN_THR,
+		.available_granularities = PAPI_GRN_THR,
+		.hardware_intr_sig =       PAPI_INT_SIGNAL,
+
+		/* component specific cmp_info initializations */
+	},
 
 	/* sizes of framework-opaque component-private structures */
 	.size = {
-			 .context = sizeof ( example_context_t ),
-			 .control_state = sizeof ( example_control_state_t ),
-			 .reg_value = sizeof ( example_register_t ),
-			 .reg_alloc = sizeof ( example_reg_alloc_t ),
-			 }
-	,
-	/* function pointers in this component */
-	.init = example_init,
-	.init_substrate = example_init_substrate,
-	.init_control_state = example_init_control_state,
-	.start = example_start,
-	.stop = example_stop,
-	.read = example_read,
-	.write = example_write,
-	.shutdown = example_shutdown,
-	.ctl = example_ctl,
-	.bpt_map_set = NULL,
-	.bpt_map_avail = NULL,
-	.bpt_map_exclusive = NULL,
-	.bpt_map_shared = NULL,
-	.bpt_map_preempt = NULL,
-	.bpt_map_update = NULL,
+	        /* once per thread */
+		.context = sizeof ( example_context_t ),
+	        /* once per eventset */
+		.control_state = sizeof ( example_control_state_t ),
+	        /* ?? */
+		.reg_value = sizeof ( example_register_t ),
+	        /* ?? */
+		.reg_alloc = sizeof ( example_reg_alloc_t ),
+	},
 
-	.update_control_state = example_update_control_state,
-	.set_domain = example_set_domain,
-	.reset = example_reset,
+	/* function pointers */
+        /* by default they are set to NULL */
+   
+	/* Used for general PAPI interactions */
+	.start =                _example_start,
+	.stop =                 _example_stop,
+	.read =                 _example_read,
+	.reset =                _example_reset,	
+	.write =                _example_write,
+	.init_component =       _example_init_component,	
+	.init_thread =          _example_init_thread,
+	.init_control_state =   _example_init_control_state,
+	.update_control_state = _example_update_control_state,	
+	.ctl =                  _example_ctl,	
+	.shutdown_thread =      _example_shutdown_thread,
+	.shutdown_component =   _example_shutdown_component,
+	.set_domain =           _example_set_domain,
+	/* .cleanup_eventset =     NULL, */
+	/* called in add_native_events() */
+	/* .allocate_registers =   NULL, */
 
-	.ntv_enum_events = example_ntv_enum_events,
-	.ntv_code_to_name = example_ntv_code_to_name,
-	.ntv_code_to_descr = example_ntv_code_to_descr,
-	.ntv_code_to_bits = example_ntv_code_to_bits,
-	.ntv_bits_to_info = NULL,
+	/* Used for overflow/profiling */
+	/* .dispatch_timer =       NULL, */
+	/* .get_overflow_address = NULL, */
+	/* .stop_profiling =       NULL, */
+	/* .set_overflow =         NULL, */
+	/* .set_profile =          NULL, */
+
+	/* ??? */
+	/* .user =                 NULL, */
+
+	/* Name Mapping Functions */
+	.ntv_enum_events =   _example_ntv_enum_events,
+	.ntv_code_to_name =  _example_ntv_code_to_name,
+	.ntv_code_to_descr = _example_ntv_code_to_descr,
+        /* if .ntv_name_to_code not available, PAPI emulates  */
+        /* it by enumerating all events and looking manually  */
+   	.ntv_name_to_code  = NULL,
+
+   
+	/* These are only used by _papi_hwi_get_native_event_info() */
+	/* Which currently only uses the info for printing native   */
+	/* event info, not for any sort of internal use.            */
+	/* .ntv_code_to_bits =  NULL, */
+
 };
 

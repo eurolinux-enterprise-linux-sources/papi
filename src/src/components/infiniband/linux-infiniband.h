@@ -4,11 +4,9 @@
 
 /** 
  * @file    linux-infiniband.h
- * CVS:     $Id: linux-infiniband.h,v 1.4 2010/06/18 16:06:37 ralph Exp $
  * @author  Heike Jagode (in collaboration with Michael Kluge, TU Dresden)
  *          jagode@eecs.utk.edu
- * Mods:	<your name here>
- *			<your email address>
+ *
  * @ingroup papi_components 		
  * 
  * InfiniBand component 

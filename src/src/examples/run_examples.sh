@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # File:    run_example.sh
-# CVS:     $Id: run_examples.sh,v 1.1 2004/06/28 18:58:39 min Exp $
+# CVS:     $Id$
 # Author:  Min Zhou
 #          min@cs.utk.edu
 

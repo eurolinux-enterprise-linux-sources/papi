@@ -4,11 +4,12 @@
 
 /**
 * @file    linux-lustre.c
-* CVS:     $Id: linux-lustre.c,v 1.7 2011/03/11 20:15:29 ralph Exp $
 * @author  Haihang You (in collaboration with Michael Kluge, TU Dresden)
 *          you@eecs.utk.edu
 * @author  Heike Jagode
 *          jagode@eecs.utk.edu
+* @author  Vince Weaver
+*          vweaver1@eecs.utk.edu
 * @brief A component for the luster filesystem.
 */
 
@@ -16,87 +17,81 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dirent.h>
+#include <stdint.h>
+#include <ctype.h>
 
 #include "papi.h"
 #include "papi_internal.h"
+#include "papi_vector.h"
 #include "papi_memory.h"
-#include "linux-lustre.h"
 
-int lustre_init_presets(  );
+/** describes a single counter with its properties */
+typedef struct counter_info_struct
+{
+	int idx;
+	char *name;
+	char *description;
+	char *unit;
+	unsigned long long value;
+} counter_info;
 
-static size_t pagesz = 0;
-static char *buffer = NULL;
-static FILE *proc_fd_snmp = NULL;
-static FILE *proc_fd_dev = NULL;
+typedef struct
+{
+	int count;
+	char **data;
+} string_list;
 
-static counter_info *subscriptions[LUSTRE_MAX_COUNTERS];
-static int num_counters = 0;
-static int is_finalized = 0;
 
-/* counters are kept in a list */
-static counter_info *root_counter = NULL;
+/** describes the infos collected from a mounted Lustre filesystem */
+typedef struct lustre_fs_struct
+{
+	char *proc_file;
+	char *proc_file_readahead;
+	counter_info *write_cntr;
+	counter_info *read_cntr;
+	counter_info *readahead_cntr;
+	struct lustre_fs_struct *next;
+} lustre_fs;
+
+#define LUSTRE_MAX_COUNTERS 100
+#define LUSTRE_MAX_COUNTER_TERMS  LUSTRE_MAX_COUNTERS
+
+typedef counter_info LUSTRE_register_t;
+typedef counter_info LUSTRE_native_event_entry_t;
+typedef counter_info LUSTRE_reg_alloc_t;
+
+
+typedef struct LUSTRE_control_state
+{
+	long long start_count[LUSTRE_MAX_COUNTERS];
+        long long current_count[LUSTRE_MAX_COUNTERS];
+        long long difference[LUSTRE_MAX_COUNTERS];
+        int which_counter[LUSTRE_MAX_COUNTERS];
+	int num_events;
+} LUSTRE_control_state_t;
+
+
+typedef struct LUSTRE_context
+{
+	LUSTRE_control_state_t state;
+} LUSTRE_context_t;
+
+/* Default path to lustre stats */
+const char proc_base_path[] = "/proc/fs/lustre/";
+//const char proc_base_path[] = "./components/lustre/fake_proc/fs/lustre/";
+
+static counter_info *lustre_native_table[LUSTRE_MAX_COUNTERS];
+static int num_events = 0;
 
 /* mount Lustre fs are kept in a list */
 static lustre_fs *root_lustre_fs = NULL;
 
-/* network interfaces are kept in a list as well */
-static network_if *root_network_if = NULL;
+papi_vector_t _lustre_vector;
 
-/* some counters that are always present */
-static counter_info *tcp_sent = NULL;
-static counter_info *tcp_recv = NULL;
-static counter_info *tcp_retr = NULL;
-
-#define lustre_native_table subscriptions
-
-long long _papi_hwd_lustre_register_start[LUSTRE_MAX_COUNTERS];
-long long _papi_hwd_lustre_register[LUSTRE_MAX_COUNTERS];
-
-
-/*******************************************************************************
- ********  BEGIN FUNCTIONS  USED INTERNALLY SPECIFIC TO THIS COMPONENT *********
- ******************************************************************************/
-
-/**
- * open a file and return the FILE handle
- */
-static FILE *
-proc_fopen( const char *procname )
-{
-	FILE *fd = fopen( procname, "r" );
-
-	if ( fd == NULL ) {
-		fprintf( stderr, "unable to open proc file %s\n", procname );
-		return NULL;
-	}
-
-	if ( !buffer ) {
-		pagesz = getpagesize(  );
-		buffer = malloc( pagesz );
-		memset( buffer, 0, pagesz );
-	}
-
-	setvbuf( fd, buffer, _IOFBF, pagesz );
-	return fd;
-}
-
-
-/**
- * read one PAGE_SIZE byte from a FILE handle and reset the file pointer
- */
-static void
-readPage( FILE * fd )
-{
-	int count_read;
-
-	count_read = fread( buffer, pagesz, 1, fd );
-
-	if ( fseek( fd, 0L, SEEK_SET ) != 0 ) {
-		fprintf( stderr, "can not seek back in proc\n" );
-		exit( 1 );
-	}
-}
-
+/******************************************************************************
+ ********  BEGIN FUNCTIONS  USED INTERNALLY SPECIFIC TO THIS COMPONENT ********
+ *****************************************************************************/
 
 /**
  * add a counter to the list of available counters
@@ -107,75 +102,27 @@ readPage( FILE * fd )
 static counter_info *
 addCounter( const char *name, const char *desc, const char *unit )
 {
-	counter_info *cntr, *last;
+    counter_info *cntr;
 
-	cntr = ( counter_info * ) malloc( sizeof ( counter_info ) );
+    cntr = malloc( sizeof ( counter_info ) );
 
-	if ( cntr == NULL ) {
-		fprintf( stderr, "can not allocate memory for new counter\n" );
-		exit( 1 );
-	}
+    if ( cntr == NULL ) {
+       SUBDBG("can not allocate memory for new counter\n" );
+       return NULL;
+    }
 
-	cntr->name = strdup( name );
-	cntr->description = strdup( desc );
-	cntr->unit = strdup( unit );
-	cntr->value = 0;
-	cntr->next = NULL;
+    cntr->idx=num_events;
+    cntr->name = strdup( name );
+    cntr->description = strdup( desc );
+    cntr->unit = strdup( unit );
+    cntr->value = 0;
 
-	if ( root_counter == NULL ) {
-		root_counter = cntr;
-	} else {
-		last = root_counter;
-		while ( last->next != NULL )
-			last = last->next;
-		last->next = cntr;
-	}
+    lustre_native_table[num_events]=cntr;
 
-	return cntr;
+    num_events++;
+
+    return cntr;
 }
-
-
-/**
- * adds a network interface to the list of available
- * interfaces and the counters to the list of available
- * counters
- */
-static void
-addNetworkIf( const char *name )
-{
-	network_if *nwif, *last;
-	char counter_name[512];
-
-	nwif = ( network_if * ) malloc( sizeof ( network_if ) );
-	if ( nwif == NULL ) {
-		fprintf( stderr,
-				 "can not allocate memory for new network interface description\n" );
-		exit( 1 );
-	}
-
-	nwif->name = strdup( name );
-
-	sprintf( counter_name, "%s_recv", name );
-	nwif->recv_cntr =
-		addCounter( counter_name, "bytes received on this interface", "bytes" );
-
-	sprintf( counter_name, "%s_send", name );
-	nwif->send_cntr =
-		addCounter( counter_name, "bytes written on this interface", "bytes" );
-
-	nwif->next = NULL;
-	num_counters += 2;
-
-	if ( root_network_if == NULL ) {
-		root_network_if = nwif;
-	} else {
-		last = root_network_if;
-		while ( last->next != NULL )
-			last = last->next;
-		last->next = nwif;
-	}
-}
-
 
 /**
  * adds a Lustre fs to the fs list and creates the counters for it
@@ -183,49 +130,60 @@ addNetworkIf( const char *name )
  * @param procpath_general path to the 'stats' file in /proc/fs/lustre/... for this fs
  * @param procpath_readahead path to the 'readahead' file in /proc/fs/lustre/... for this fs
  */
-static void
+static int
 addLustreFS( const char *name,
-			 const char *procpath_general, const char *procpath_readahead )
+	     const char *procpath_general, 
+	     const char *procpath_readahead )
 {
 	lustre_fs *fs, *last;
 	char counter_name[512];
+	FILE *fff;
 
-	fs = ( lustre_fs * ) malloc( sizeof ( lustre_fs ) );
+	SUBDBG("Adding lustre fs\n");
+
+	fs = malloc( sizeof ( lustre_fs ) );
 	if ( fs == NULL ) {
-		fprintf( stderr,
-				 "can not allocate memory for new Lustre FS description\n" );
-		exit( 1 );
+	   SUBDBG("can not allocate memory for new Lustre FS description\n" );
+	   return PAPI_ENOMEM;
 	}
 
-	fs->proc_fd = proc_fopen( procpath_general );
-	if ( fs->proc_fd == NULL ) {
-		fprintf( stderr, "can not open '%s'\n", procpath_general );
-		exit( 1 );
+	fs->proc_file=strdup(procpath_general);
+	fff = fopen( procpath_general, "r" );
+	if ( fff == NULL ) {
+	  SUBDBG("can not open '%s'\n", procpath_general );
+	  free(fs);
+	  return PAPI_ESYS;
 	}
+	fclose(fff);
 
-	fs->proc_fd_readahead = proc_fopen( procpath_readahead );
-	if ( fs->proc_fd_readahead == NULL ) {
-		fprintf( stderr, "can not open '%s'\n", procpath_readahead );
-		exit( 1 );
+	fs->proc_file_readahead = strdup(procpath_readahead);
+	fff = fopen( procpath_readahead, "r" );
+	if ( fff == NULL ) {
+	  SUBDBG("can not open '%s'\n", procpath_readahead );
+	  free(fs);
+	  return PAPI_ESYS;
 	}
+	fclose(fff);
 
 	sprintf( counter_name, "%s_llread", name );
-	fs->read_cntr =
-		addCounter( counter_name, "bytes read on this lustre client", "bytes" );
+	fs->read_cntr = addCounter( counter_name, 
+				    "bytes read on this lustre client", 
+				    "bytes" );
 
 	sprintf( counter_name, "%s_llwrite", name );
-	fs->write_cntr =
-		addCounter( counter_name, "bytes written on this lustre client",
-					"bytes" );
+	fs->write_cntr = addCounter( counter_name, 
+				     "bytes written on this lustre client",
+				     "bytes" );
 
 	sprintf( counter_name, "%s_wrong_readahead", name );
-	fs->readahead_cntr =
-		addCounter( counter_name, "bytes read but discarded due to readahead",
-					"bytes" );
+	fs->readahead_cntr = addCounter( counter_name, 
+					 "bytes read but discarded due to readahead",
+					 "bytes" );
 
 	fs->next = NULL;
-	num_counters += 3;
 
+	/* Insert into the linked list */
+	/* Does this need locking? */
 	if ( root_lustre_fs == NULL ) {
 		root_lustre_fs = fs;
 	} else {
@@ -236,538 +194,198 @@ addLustreFS( const char *name,
 
 		last->next = fs;
 	}
-}
-
-
-/**
- * looks after available IP interfaces/cards
- */
-static void
-init_tcp_counter(  )
-{
-	char *ptr;
-	char name[100];
-	int idx;
-
-	/* init the static stuff from /proc/net/snmp */
-	proc_fd_snmp = proc_fopen( "/proc/net/snmp" );
-	if ( proc_fd_snmp == NULL ) {
-		return;
-		/* fprintf( stderr, "can not open /proc/net/snmp\n");
-		   exit(1);
-		 */
-	}
-
-	tcp_sent =
-		addCounter( "tcp_segments_sent", "# of TCP segments sent", "segments" );
-	tcp_recv =
-		addCounter( "tcp_segments_received", "# of TCP segments received",
-					"segments" );
-	tcp_retr =
-		addCounter( "tcp_segments_retransmitted",
-					"# of TCP segments retransmitted", "segments" );
-
-	num_counters += 3;
-
-	/* now the individual interfaces */
-	proc_fd_dev = proc_fopen( "/proc/net/dev" );
-	if ( proc_fd_dev == NULL ) {
-		return;
-		/* fprintf( stderr, "can not open /proc/net/dev\n");
-		   exit(1);
-		 */
-	}
-
-	readPage( proc_fd_dev );
-	ptr = buffer;
-	while ( *ptr != 0 ) {
-		while ( *ptr != 0 && *ptr != ':' )
-			ptr++;
-
-		if ( *ptr == 0 )
-			break;
-
-		/* move backwards until space or '\n' */
-		while ( *ptr != ' ' && *ptr != '\n' )
-			ptr--;
-
-		ptr++;
-		memset( name, 0, sizeof ( name ) );
-		idx = 0;
-
-		while ( *ptr != ':' )
-			name[idx++] = *ptr++;
-
-		ptr++;
-		// printf("new interface: '%s'\n", name);
-		addNetworkIf( name );
-	}
+	free(fs);
+	return PAPI_OK;
 }
 
 
 /**
  * goes through proc and tries to discover all mounted Lustre fs
  */
-static void
-init_lustre_counter(  )
+static int
+init_lustre_counters( void  )
 {
-	const char *proc_base_path = "/proc/fs/lustre/llite";
+        char lustre_dir[PATH_MAX];
 	char path[PATH_MAX];
-	char path_readahead[PATH_MAX];
+	char path_readahead[PATH_MAX],path_stats[PATH_MAX];
 	char *ptr;
 	char fs_name[100];
 	int idx = 0;
 	int tmp_fd;
-	DIR *proc_fd;
+	DIR *proc_dir;
 	struct dirent *entry;
 
-	proc_fd = opendir( proc_base_path );
-	if ( proc_fd == NULL ) {
-		// we are not able to read this directory ...
-		return;
+	sprintf(lustre_dir,"%s/llite",proc_base_path);
+
+	proc_dir = opendir( lustre_dir );
+	if ( proc_dir == NULL ) {
+	   SUBDBG("Cannot open %s\n",lustre_dir);
+	   return PAPI_ESYS;
 	}
 
-	entry = readdir( proc_fd );
+	entry = readdir( proc_dir );
+
 	while ( entry != NULL ) {
-		memset( path, 0, PATH_MAX );
-		snprintf( path, PATH_MAX - 1, "%s/%s/stats", proc_base_path,
+	   memset( path, 0, PATH_MAX );
+	   snprintf( path, PATH_MAX - 1, "%s/%s/stats", lustre_dir,
 				  entry->d_name );
-		//fprintf( stderr, "checking for file %s\n", path);
-		if ( ( tmp_fd = open( path, O_RDONLY ) ) != -1 ) {
-			close( tmp_fd );
-			// erase \r and \n at the end of path
-			idx = strlen( path );
-			idx--;
+	   SUBDBG("checking for file %s\n", path);
 
-			while ( path[idx] == '\r' || path[idx] == '\n' )
-				path[idx--] = 0;
+	   if ( ( tmp_fd = open( path, O_RDONLY ) ) != -1 ) {
+	      close( tmp_fd );
 
-			//  /proc/fs/lustre/llite/ has a length of 22 byte
-			memset( fs_name, 0, 100 );
-			idx = 0;
-			ptr = &path[22];
+	      /* erase \r and \n at the end of path */
+	      /* why is this necessary?             */
 
-			while ( *ptr != '-' && idx < 100 ) {
-				fs_name[idx] = *ptr;
-				ptr++;
-				idx++;
-			}
+	      idx = strlen( path );
+	      idx--;
 
-			/* printf("found Lustre FS: %s\n", fs_name); */
-			strncpy( path_readahead, path, PATH_MAX );
-			ptr = strrchr( path_readahead, '/' );
+	      while ( path[idx] == '\r' || path[idx] == '\n' )
+		    path[idx--] = 0;
 
-			if ( ptr == NULL ) {
-				fprintf( stderr, "no slash in %s ?\n", path_readahead );
-				fflush( stderr );
-				exit( 1 );
-			}
+	      /* Lustre paths are of type server-UUID */
 
-			ptr++;
-			strcpy( ptr, "read_ahead_stats" );
-			addLustreFS( fs_name, path, path_readahead );
+	      idx = 0;
 
-			memset( path, 0, PATH_MAX );
-		}
-		entry = readdir( proc_fd );
+	      ptr = strstr(path,"llite/") + 6;
+
+	      while ( *ptr && *ptr != '-' && idx < 100 ) {
+	         fs_name[idx] = *ptr;
+		 ptr++;
+		 idx++;
+	      }
+
+	      SUBDBG("found Lustre FS: %s\n", fs_name);
+
+	      snprintf( path_stats, PATH_MAX - 1, 
+			"%s/%s/stats", 
+			lustre_dir,
+			entry->d_name );
+	      SUBDBG("Found file %s\n", path_stats);
+
+	      snprintf( path_readahead, PATH_MAX - 1, 
+			"%s/%s/read_ahead_stats", 
+			lustre_dir,
+			entry->d_name );
+	      SUBDBG("Now checking for file %s\n", path_readahead);
+
+
+	      strcpy( ptr, "read_ahead_stats" );
+	      addLustreFS( fs_name, path_stats, path_readahead );
+
+	   }
+	   entry = readdir( proc_dir );
 	}
-	closedir( proc_fd );
+	closedir( proc_dir );
+
+	return PAPI_OK;
+
 }
-
-
-/**
- * reads all cards and updates the associated counters
- */
-static void
-read_tcp_counter(  )
-{
-	int64_t in, out, retr;
-	char *ptr;
-	int num;
-	int idx;
-	char name[100];
-	network_if *current_if = root_network_if;
-
-	if ( proc_fd_snmp != NULL ) {
-		readPage( proc_fd_snmp );
-
-		ptr = strstr( buffer, "Tcp:" );
-		ptr += 4;
-		ptr = strstr( ptr, "Tcp:" );
-		ptr += 4;
-		num = 0;
-
-		while ( num < 10 ) {
-			if ( *ptr == ' ' )
-				num++;
-
-			ptr++;
-		}
-
-		in = strtoll( ptr, NULL, 10 );
-
-		while ( *ptr != ' ' )
-			ptr++;
-
-		ptr++;
-		out = strtoll( ptr, NULL, 10 );
-
-		while ( *ptr != ' ' )
-			ptr++;
-
-		ptr++;
-		retr = strtoll( ptr, NULL, 10 );
-
-		tcp_sent->value = out;
-		tcp_recv->value = in;
-		tcp_retr->value = retr;
-	}
-
-	if ( proc_fd_dev != NULL ) {
-		/* now parse /proc/net/dev */
-		readPage( proc_fd_dev );
-		ptr = buffer;
-		// jump over first two \n
-		while ( *ptr != 0 && *ptr != '\n' )
-			ptr++;
-
-		if ( *ptr == 0 )
-			return;
-
-		ptr++;
-		while ( *ptr != 0 && *ptr != '\n' )
-			ptr++;
-
-		if ( *ptr == 0 )
-			return;
-
-		ptr++;
-
-		while ( *ptr != 0 ) {
-			if ( current_if == NULL )
-				break;
-
-			// move to next non space char
-			while ( *ptr == ' ' )
-				ptr++;
-
-			if ( *ptr == 0 )
-				return;
-
-			// copy name until ':'
-			idx = 0;
-			while ( *ptr != ':' )
-				name[idx++] = *ptr++;
-
-			if ( *ptr == 0 )
-				return;
-
-			name[idx] = 0;
-
-			// compare and make sure network interface are still
-			// showing up in the same order. adding or deleting
-			// some or changing the order during the run is not
-			// support yet (overhead)
-			if ( current_if == NULL ) {
-				fprintf( stderr, "error: current interface is NULL\n" );
-				exit( 1 );
-			}
-
-			if ( strcmp( name, current_if->name ) != 0 ) {
-				fprintf( stderr,
-						 "wrong interface, order changed(?): got %s, wanted %s\n",
-						 name, current_if->name );
-				exit( 1 );
-			}
-			// move forward to next number
-			while ( *ptr < '0' || *ptr > '9' )
-				ptr++;
-
-			if ( *ptr == 0 )
-				return;
-
-			in = strtoll( ptr, NULL, 10 );
-
-			// move eight numbers forward
-			for ( num = 0; num < 8; num++ ) {
-				// move to next space
-				while ( *ptr != ' ' )
-					ptr++;
-
-				if ( *ptr == 0 )
-					return;
-
-				// move forward to next number
-				while ( *ptr < '0' || *ptr > '9' )
-					ptr++;
-
-				if ( *ptr == 0 )
-					return;
-			}
-
-			out = strtoll( ptr, NULL, 10 );
-
-			// move to next newline
-			while ( *ptr != '\n' )
-				ptr++;
-
-			ptr++;
-
-			current_if->recv_cntr->value = in;
-			current_if->send_cntr->value = out;
-			current_if = current_if->next;
-		}
-	}
-}
-
 
 /**
  * updates all Lustre related counters
  */
 static void
-read_lustre_counter(  )
+read_lustre_counter( )
 {
-	char *ptr;
 	lustre_fs *fs = root_lustre_fs;
+	FILE *fff;
+	char buffer[BUFSIZ];
 
 	while ( fs != NULL ) {
-		readPage( fs->proc_fd );
 
-		ptr = strstr( buffer, "write_bytes" );
-		if ( ptr == NULL ) {
-			fs->write_cntr->value = 0;
-		} else {
-			/* goto eol */
-			while ( *ptr != '\n' )
-				ptr++;
+	  /* read values from stats file */
+	  fff=fopen(fs->proc_file,"r" );
+	  if (fff != NULL) {
+		  while(1) {
+			if (fgets(buffer,BUFSIZ,fff)==NULL) break;
+	
+			if (strstr( buffer, "write_bytes" )) {
+			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %lld",&fs->write_cntr->value);
+			  SUBDBG("Read %lld write_bytes\n",fs->write_cntr->value);
+			}
+	
+			if (strstr( buffer, "read_bytes" )) {
+			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %lld",&fs->read_cntr->value);
+			  SUBDBG("Read %lld read_bytes\n",fs->read_cntr->value);
+			}
+		  }
+		  fclose(fff);
+	  }
 
-			*ptr = 0;
-			while ( *ptr != ' ' )
-				ptr--;
-
-			ptr++;
-			fs->write_cntr->value = strtoll( ptr, NULL, 10 );
-		}
-
-		ptr = strstr( buffer, "read_bytes" );
-		if ( ptr == NULL ) {
-			fs->read_cntr->value = 0;
-		} else {
-			/* goto eol */
-			while ( *ptr != '\n' )
-				ptr++;
-
-			*ptr = 0;
-			while ( *ptr != ' ' )
-				ptr--;
-
-			ptr++;
-			fs->read_cntr->value = strtoll( ptr, NULL, 10 );
-		}
-
-		readPage( fs->proc_fd_readahead );
-		ptr = strstr( buffer, "read but discarded" );
-		if ( ptr == NULL ) {
-			fs->write_cntr->value = 0;
-		} else {
-			/* goto next number */
-			while ( *ptr < '0' || *ptr > '9' )
-				ptr++;
-
-			fs->readahead_cntr->value = strtoll( ptr, NULL, 10 );
-		}
-		fs = fs->next;
+	  fff=fopen(fs->proc_file_readahead,"r");
+	  if (fff != NULL) {
+		  while(1) {
+			if (fgets(buffer,BUFSIZ,fff)==NULL) break;
+	
+			if (strstr( buffer, "read but discarded")) {
+			   sscanf(buffer,"%*s %*s %*s %lld",&fs->readahead_cntr->value);
+			   SUBDBG("Read %lld discared\n",fs->readahead_cntr->value);
+			   break;
+			}
+	  	  }
+		  fclose(fff);
+	  }
+	  fs = fs->next;
 	}
 }
 
 
 /**
- * read all values for all counters
+ * frees all allocated resources
  */
 static void
-host_read_values( long long *data )
+host_finalize( void )
 {
-	int loop;
-	read_tcp_counter(  );
-	read_lustre_counter(  );
-
-	for ( loop = 0; loop < LUSTRE_MAX_COUNTERS; loop++ ) {
-		if ( subscriptions[loop] == NULL )
-			break;
-
-		data[loop] = subscriptions[loop]->value;
-	}
-}
-
-
-/**
- * find the pointer for a counter_info structure based on the counter name
- */
-static counter_info *
-counterFromName( const char *cntr )
-{
-	int loop = 0;
-	char tmp[512];
-	counter_info *local_cntr = root_counter;
-	while ( local_cntr != NULL ) {
-		if ( strcmp( cntr, local_cntr->name ) == 0 )
-			return local_cntr;
-
-		local_cntr = local_cntr->next;
-		loop++;
-	}
-
-	gethostname( tmp, 512 );
-	fprintf( stderr, "can not find host counter: %s on %s\n", cntr, tmp );
-	fprintf( stderr, "we only have: " );
-	local_cntr = root_counter;
-
-	while ( local_cntr != NULL ) {
-		fprintf( stderr, "'%s' ", local_cntr->name );
-		local_cntr = local_cntr->next;
-		loop++;
-	}
-
-	fprintf( stderr, "\n" );
-	exit( 1 );
-	/* never reached */
-	return 0;
-}
-
-
-/**
- * allow external code to subscribe to a counter based on the counter name
- */
-static uint64_t
-host_subscribe( const char *cntr )
-{
-	int loop;
-	counter_info *counter = counterFromName( cntr );
-
-	for ( loop = 0; loop < LUSTRE_MAX_COUNTERS; loop++ ) {
-		if ( subscriptions[loop] == NULL ) {
-			subscriptions[loop] = counter;
-			counter->idx = loop;
-			//fprintf( stderr, "subscription %d is %s\n", loop, subscriptions[ loop ]->name);
-			return loop + 1;
-		}
-	}
-	fprintf( stderr, "please subscribe only once to each counter\n" );
-	exit( 1 );
-	/* never reached */
-	return 0;
-}
-
-
-/**
- * return a newly allocated list of strings containing all counter names
- */
-static string_list *
-host_listCounter( int num_counters1 )
-{
-	string_list *list;
-	counter_info *cntr = root_counter;
-
-	list = malloc( sizeof ( string_list ) );
-	if ( list == NULL ) {
-		fprintf( stderr, "unable to allocate memory for new string_list" );
-		exit( 1 );
-	}
-	list->count = 0;
-	list->data = ( char ** ) malloc( num_counters1 * sizeof ( char * ) );
-
-	if ( list->data == NULL ) {
-		fprintf( stderr,
-				 "unable to allocate memory for %d pointers in a new string_list\n",
-				 num_counters1 );
-		exit( 1 );
-	}
-
-	while ( cntr != NULL ) {
-		list->data[list->count++] = strdup( cntr->name );
-		cntr = cntr->next;
-	}
-
-	return list;
-}
-
-
-/**
- * finalizes the library
- */
-static void
-host_finalize(  )
-{
+        int i;
 	lustre_fs *fs, *next_fs;
-	counter_info *cntr, *next;
-	network_if *nwif, *next_nwif;
+	counter_info *cntr;
 
-	if ( is_finalized )
-		return;
-
-	if ( proc_fd_snmp != NULL )
-		fclose( proc_fd_snmp );
-
-	if ( proc_fd_dev != NULL )
-		fclose( proc_fd_dev );
-
-	proc_fd_snmp = NULL;
-	proc_fd_dev = NULL;
-
-	if ( buffer != NULL )
-		free( buffer );
-
-	buffer = NULL;
-	cntr = root_counter;
-
-	while ( cntr != NULL ) {
-		next = cntr->next;
-		free( cntr->name );
-		free( cntr->description );
-		free( cntr->unit );
-		free( cntr );
-		cntr = next;
+	for(i=0;i<num_events;i++) {
+	   cntr=lustre_native_table[i];
+	   if ( cntr != NULL ) {
+	      free( cntr->name );
+	      free( cntr->description );
+	      free( cntr->unit );
+	      free( cntr );	      
+	   }
+	   lustre_native_table[i]=NULL;
 	}
 
-	root_counter = NULL;
 	fs = root_lustre_fs;
 
 	while ( fs != NULL ) {
 		next_fs = fs->next;
+		free(fs->proc_file);
+		free(fs->proc_file_readahead);
 		free( fs );
 		fs = next_fs;
 	}
 
 	root_lustre_fs = NULL;
-	nwif = root_network_if;
-
-	while ( nwif != NULL ) {
-		next_nwif = nwif->next;
-		free( nwif->name );
-		free( nwif );
-		nwif = next_nwif;
-	}
-
-	root_network_if = NULL;
-	is_finalized = 1;
 }
 
 
 /**
- * delete a list of strings
+ * see if lustre filesystem is supported by kernel
  */
-static void
-host_deleteStringList( string_list * to_delete )
+static int
+detect_lustre()
 {
-	int loop;
+        char lustre_directory[BUFSIZ];
+	DIR *proc_dir;
 
-	if ( to_delete->data != NULL ) {
-		for ( loop = 0; loop < to_delete->count; loop++ )
-			free( to_delete->data[loop] );
+	sprintf(lustre_directory,"%s/llite",proc_base_path);
 
-		free( to_delete->data );
+	proc_dir = opendir( proc_base_path );
+	if ( proc_dir == NULL ) {
+	  SUBDBG("we are not able to read %s\n",lustre_directory);
+	   return PAPI_ESYS;
 	}
-	free( to_delete );
+
+	closedir(proc_dir);
+
+	return PAPI_OK;
 }
 
 
@@ -776,71 +394,43 @@ host_deleteStringList( string_list * to_delete )
  *****************************************************************************/
 
 /*
- * Substrate setup and shutdown
+ * Component setup and shutdown
  */
 
-/* Initialize hardware counters, setup the function vector table
- * and get hardware information, this routine is called when the 
- * PAPI process is initialized (IE PAPI_library_init)
- */
 int
-LUSTRE_init_substrate(  )
+_lustre_init_component(  )
 {
-	int retval = PAPI_OK, i;
 
-	for ( i = 0; i < LUSTRE_MAX_COUNTERS; i++ ) {
-		_papi_hwd_lustre_register_start[i] = -1;
-		_papi_hwd_lustre_register[i] = -1;
+	int ret = PAPI_OK;
+
+	/* See if lustre filesystem exists */
+	ret=detect_lustre();
+	if (ret!=PAPI_OK) {
+	   strncpy(_lustre_vector.cmp_info.disabled_reason,
+		   "No lustre filesystems found",PAPI_MAX_STR_LEN);
+	   return ret;
 	}
 
-	/* Internal function, doesn't necessarily need to be a function */
-	lustre_init_presets(  );
+	ret=init_lustre_counters();
 
-	return ( retval );
+	_lustre_vector.cmp_info.num_native_events=num_events;
+
+	return ret;
 }
 
 
-/*
- * This function is an internal function and not exposed and thus
- * it can be called anything you want as long as the information
- * for the presets are setup here.
- */
-hwi_search_t lustre_preset_map[] = { {0, {0, {PAPI_NULL, PAPI_NULL}
-										  , {0,}
-										  }
-									  }
-};
 
-
-int
-lustre_init_presets(  )
-{
-	return ( _papi_hwi_setup_all_presets( lustre_preset_map, NULL ) );
-}
 
 
 /*
  * This is called whenever a thread is initialized
  */
 int
-LUSTRE_init( hwd_context_t * ctx )
+_lustre_init_thread( hwd_context_t * ctx )
 {
-	string_list *counter_list = NULL;
-	int i;
+  (void) ctx;
 
-	init_tcp_counter(  );
-	init_lustre_counter(  );
-
-	counter_list = host_listCounter( num_counters );
-
-	for ( i = 0; i < counter_list->count; i++ )
-		host_subscribe( counter_list->data[i] );
-
-	( ( LUSTRE_context_t * ) ctx )->state.ncounter = counter_list->count;
-
-	host_deleteStringList( counter_list );
-
-	return ( PAPI_OK );
+  return PAPI_OK;
 }
 
 
@@ -848,22 +438,39 @@ LUSTRE_init( hwd_context_t * ctx )
  *
  */
 int
-LUSTRE_shutdown( hwd_context_t * ctx )
+_lustre_shutdown_component( void )
+{
+
+	host_finalize(  );
+
+	return PAPI_OK;
+}
+
+/*
+ *
+ */
+int
+_lustre_shutdown_thread( hwd_context_t * ctx )
 {
 	( void ) ctx;
-	host_finalize(  );
-	return ( PAPI_OK );
+
+	return PAPI_OK;
 }
+
 
 
 /*
  * Control of counters (Reading/Writing/Starting/Stopping/Setup) functions
  */
 int
-LUSTRE_init_control_state( hwd_control_state_t * ptr )
+_lustre_init_control_state( hwd_control_state_t *ctl )
 {
-	( void ) ptr;
-	return PAPI_OK;
+    LUSTRE_control_state_t *lustre_ctl = (LUSTRE_control_state_t *)ctl;
+
+    memset(lustre_ctl->start_count,0,sizeof(long long)*LUSTRE_MAX_COUNTERS);
+    memset(lustre_ctl->current_count,0,sizeof(long long)*LUSTRE_MAX_COUNTERS);
+
+    return PAPI_OK;
 }
 
 
@@ -871,20 +478,24 @@ LUSTRE_init_control_state( hwd_control_state_t * ptr )
  *
  */
 int
-LUSTRE_update_control_state( hwd_control_state_t * ptr, NativeInfo_t * native,
-							 int count, hwd_context_t * ctx )
+_lustre_update_control_state( hwd_control_state_t *ctl, 
+			      NativeInfo_t *native,
+			      int count, 
+			      hwd_context_t *ctx )
 {
-	( void ) ptr;
-	( void ) ctx;
-	int i, index;
+    LUSTRE_control_state_t *lustre_ctl = (LUSTRE_control_state_t *)ctl;
+    ( void ) ctx;
+    int i, index;
 
-	for ( i = 0; i < count; i++ ) {
-		index =
-			native[i].ni_event & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-		native[i].ni_position = index;
-	}
+    for ( i = 0; i < count; i++ ) {
+       index = native[i].ni_event;
+       lustre_ctl->which_counter[i]=index;
+       native[i].ni_position = i;
+    }
 
-	return ( PAPI_OK );
+    lustre_ctl->num_events=count;
+
+    return PAPI_OK;
 }
 
 
@@ -892,16 +503,25 @@ LUSTRE_update_control_state( hwd_control_state_t * ptr, NativeInfo_t * native,
  *
  */
 int
-LUSTRE_start( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_lustre_start( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
-	( void ) ctx;
-	( void ) ctrl;
+    ( void ) ctx;
 
-	host_read_values( _papi_hwd_lustre_register_start );
-	memcpy( _papi_hwd_lustre_register, _papi_hwd_lustre_register_start,
-			LUSTRE_MAX_COUNTERS * sizeof ( long long ) );
+    LUSTRE_control_state_t *lustre_ctl = (LUSTRE_control_state_t *)ctl;
+    int i;
 
-	return ( PAPI_OK );
+    read_lustre_counter(  );
+
+    for(i=0;i<lustre_ctl->num_events;i++) {
+       lustre_ctl->current_count[i]=
+                 lustre_native_table[lustre_ctl->which_counter[i]]->value;
+    }
+
+    memcpy( lustre_ctl->start_count,
+	    lustre_ctl->current_count,
+	    LUSTRE_MAX_COUNTERS * sizeof ( long long ) );
+
+    return PAPI_OK;
 }
 
 
@@ -909,42 +529,69 @@ LUSTRE_start( hwd_context_t * ctx, hwd_control_state_t * ctrl )
  *
  */
 int
-LUSTRE_read( hwd_context_t * ctx, hwd_control_state_t * ctrl,
+_lustre_stop( hwd_context_t *ctx, hwd_control_state_t *ctl )
+{
+
+    (void) ctx;
+    LUSTRE_control_state_t *lustre_ctl = (LUSTRE_control_state_t *)ctl;
+    int i;
+
+    read_lustre_counter(  );
+
+    for(i=0;i<lustre_ctl->num_events;i++) {
+       lustre_ctl->current_count[i]=
+                 lustre_native_table[lustre_ctl->which_counter[i]]->value;
+    }
+
+    return PAPI_OK;
+
+}
+
+
+
+/*
+ *
+ */
+int
+_lustre_read( hwd_context_t *ctx, hwd_control_state_t *ctl,
 			 long long **events, int flags )
 {
-	( void ) ctx;
-	( void ) flags;
-	int i;
+    (void) ctx;
+    ( void ) flags;
 
-	host_read_values( _papi_hwd_lustre_register );
+    LUSTRE_control_state_t *lustre_ctl = (LUSTRE_control_state_t *)ctl;
+    int i;
 
-	for ( i = 0; i < ( ( LUSTRE_context_t * ) ctx )->state.ncounter; i++ ) {
-		( ( LUSTRE_control_state_t * ) ctrl )->counts[i] =
-			_papi_hwd_lustre_register[i] - _papi_hwd_lustre_register_start[i];
-	}
+    read_lustre_counter(  );
 
-	*events = ( ( LUSTRE_control_state_t * ) ctrl )->counts;
-	return ( PAPI_OK );
+    for(i=0;i<lustre_ctl->num_events;i++) {
+       lustre_ctl->current_count[i]=
+                 lustre_native_table[lustre_ctl->which_counter[i]]->value;
+       lustre_ctl->difference[i]=lustre_ctl->current_count[i]-
+	                                     lustre_ctl->start_count[i];
+    }
+
+    *events = lustre_ctl->difference;
+
+    return PAPI_OK;
+
 }
+
+
 
 
 /*
  *
  */
 int
-LUSTRE_stop( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_lustre_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
 {
-	( void ) ctx;
-	int i;
 
-	host_read_values( _papi_hwd_lustre_register );
+  /* re-initializes counter_start values to current */
 
-	for ( i = 0; i < ( ( LUSTRE_context_t * ) ctx )->state.ncounter; i++ ) {
-		( ( LUSTRE_control_state_t * ) ctrl )->counts[i] =
-			_papi_hwd_lustre_register[i] - _papi_hwd_lustre_register_start[i];
-	}
+  _lustre_start(ctx,ctrl);
 
-	return ( PAPI_OK );
+  return PAPI_OK;
 }
 
 
@@ -952,23 +599,13 @@ LUSTRE_stop( hwd_context_t * ctx, hwd_control_state_t * ctrl )
  *
  */
 int
-LUSTRE_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
-{
-	LUSTRE_start( ctx, ctrl );
-	return ( PAPI_OK );
-}
-
-
-/*
- *
- */
-int
-LUSTRE_write( hwd_context_t * ctx, hwd_control_state_t * ctrl, long long *from )
+_lustre_write( hwd_context_t * ctx, hwd_control_state_t * ctrl, long long *from )
 {
 	( void ) ctx;
 	( void ) ctrl;
 	( void ) from;
-	return ( PAPI_OK );
+
+	return PAPI_OK;
 }
 
 
@@ -976,17 +613,18 @@ LUSTRE_write( hwd_context_t * ctx, hwd_control_state_t * ctrl, long long *from )
  * Functions for setting up various options
  */
 
-/* This function sets various options in the substrate
+/* This function sets various options in the component
  * The valid codes being passed in are PAPI_SET_DEFDOM,
  * PAPI_SET_DOMAIN, PAPI_SETDEFGRN, PAPI_SET_GRANUL * and PAPI_SET_INHERIT
  */
 int
-LUSTRE_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
+_lustre_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
 {
 	( void ) ctx;
 	( void ) code;
 	( void ) option;
-	return ( PAPI_OK );
+
+	return PAPI_OK;
 }
 
 
@@ -1001,7 +639,7 @@ LUSTRE_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
  * PAPI_DOM_ALL   is all of the domains
  */
 int
-LUSTRE_set_domain( hwd_control_state_t * cntrl, int domain )
+_lustre_set_domain( hwd_control_state_t * cntrl, int domain )
 {
 	( void ) cntrl;
 	int found = 0;
@@ -1015,8 +653,9 @@ LUSTRE_set_domain( hwd_control_state_t * cntrl, int domain )
 		found = 1;
 	}
 	if ( !found )
-		return ( PAPI_EINVAL );
-	return ( PAPI_OK );
+		return PAPI_EINVAL;
+
+	return PAPI_OK;
 }
 
 
@@ -1024,12 +663,16 @@ LUSTRE_set_domain( hwd_control_state_t * cntrl, int domain )
  *
  */
 int
-LUSTRE_ntv_code_to_name( unsigned int EventCode, char *name, int len )
+_lustre_ntv_code_to_name( unsigned int EventCode, char *name, int len )
 {
-	strncpy( name,
-			 lustre_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-								 PAPI_COMPONENT_AND_MASK]->name, len );
-	return ( PAPI_OK );
+
+  int event=EventCode;
+
+  if (event >=0 && event < num_events) {
+     strncpy( name, lustre_native_table[event]->name, len );
+     return PAPI_OK;
+  }
+  return PAPI_ENOEVNT;
 }
 
 
@@ -1037,12 +680,16 @@ LUSTRE_ntv_code_to_name( unsigned int EventCode, char *name, int len )
  *
  */
 int
-LUSTRE_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
+_lustre_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
 {
-	strncpy( name,
-			 lustre_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-								 PAPI_COMPONENT_AND_MASK]->description, len );
-	return ( PAPI_OK );
+
+  int event=EventCode;
+
+  if (event >=0 && event < num_events) {
+	strncpy( name, lustre_native_table[event]->description, len );
+	return PAPI_OK;
+  }
+  return PAPI_ENOEVNT;
 }
 
 
@@ -1050,52 +697,28 @@ LUSTRE_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
  *
  */
 int
-LUSTRE_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
+_lustre_ntv_enum_events( unsigned int *EventCode, int modifier )
 {
-	memcpy( ( LUSTRE_register_t * ) bits,
-			lustre_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-								PAPI_COMPONENT_AND_MASK],
-			sizeof ( LUSTRE_register_t ) );
-	return ( PAPI_OK );
-}
-
-int
-LUSTRE_ntv_bits_to_info( hwd_register_t * bits, char *names,
-						 unsigned int *values, int name_len, int count )
-{
-	( void ) bits;
-	( void ) names;
-	( void ) values;
-	( void ) name_len;
-	( void ) count;
-	return ( 1 );
-}
-
-
-/*
- *
- */
-int
-LUSTRE_ntv_enum_events( unsigned int *EventCode, int modifier )
-{
-	int cidx = PAPI_COMPONENT_INDEX( *EventCode );
 
 	if ( modifier == PAPI_ENUM_FIRST ) {
-		/* assumes first native event is always 0x4000000 */
-		*EventCode = PAPI_NATIVE_MASK | PAPI_COMPONENT_MASK( cidx );
-		return ( PAPI_OK );
+	   if (num_events==0) return PAPI_ENOEVNT;
+	   *EventCode = 0;
+	   return PAPI_OK;
 	}
 
 	if ( modifier == PAPI_ENUM_EVENTS ) {
-		int index = *EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+		int index = *EventCode;
 
 		if ( lustre_native_table[index + 1] ) {
 			*EventCode = *EventCode + 1;
-			return ( PAPI_OK );
-		} else
-			return ( PAPI_ENOEVNT );
-	} else
-		return ( PAPI_EINVAL );
+			return PAPI_OK;
+		} else {
+			return PAPI_ENOEVNT;
+		}
+	} 
+		
+
+	return PAPI_EINVAL;
 }
 
 
@@ -1103,50 +726,55 @@ LUSTRE_ntv_enum_events( unsigned int *EventCode, int modifier )
  *
  */
 papi_vector_t _lustre_vector = {
-	.cmp_info = {
-				 /* default component information (unspecified values are initialized to 0) */
-				 .name =
-				 "$Id: linux-lustre.c,v 1.7 2011/03/11 20:15:29 ralph Exp $",
-				 .version = "$Revision: 1.7 $",
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
-				 .num_cntrs = LUSTRE_MAX_COUNTERS,
-				 .default_domain = PAPI_DOM_USER,
-				 .default_granularity = PAPI_GRN_THR,
-				 .available_granularities = PAPI_GRN_THR,
-				 .hardware_intr_sig = PAPI_INT_SIGNAL,
+   .cmp_info = {
+        /* component information (unspecified values initialized to 0) */
+       .name = "lustre",
+	   .short_name = "lustre",
+       .version = "1.9",
+       .description = "Lustre filesystem statistics",
+       .num_mpx_cntrs = LUSTRE_MAX_COUNTERS,
+       .num_cntrs = LUSTRE_MAX_COUNTERS,
+       .default_domain = PAPI_DOM_USER,
+       .default_granularity = PAPI_GRN_THR,
+       .available_granularities = PAPI_GRN_THR,
+       .hardware_intr_sig = PAPI_INT_SIGNAL,
 
-				 /* component specific cmp_info initializations */
-				 .fast_real_timer = 0,
-				 .fast_virtual_timer = 0,
-				 .attach = 0,
-				 .attach_must_ptrace = 0,
-				 .available_domains = PAPI_DOM_USER | PAPI_DOM_KERNEL,
-				 }
-	,
+       /* component specific cmp_info initializations */
+       .fast_real_timer = 0,
+       .fast_virtual_timer = 0,
+       .attach = 0,
+       .attach_must_ptrace = 0,
+       .available_domains = PAPI_DOM_USER | PAPI_DOM_KERNEL,
+  },
 
-	/* sizes of framework-opaque component-private structures */
-	.size = {
-			 .context = sizeof ( LUSTRE_context_t ),
-			 .control_state = sizeof ( LUSTRE_control_state_t ),
-			 .reg_value = sizeof ( LUSTRE_register_t ),
-			 .reg_alloc = sizeof ( LUSTRE_reg_alloc_t ),
-			 }
-	,
-	/* function pointers in this component */
-	.init = LUSTRE_init,
-	.init_substrate = LUSTRE_init_substrate,
-	.init_control_state = LUSTRE_init_control_state,
-	.start = LUSTRE_start,
-	.stop = LUSTRE_stop,
-	.read = LUSTRE_read,
-	.shutdown = LUSTRE_shutdown,
-	.ctl = LUSTRE_ctl,
-	.update_control_state = LUSTRE_update_control_state,
-	.set_domain = LUSTRE_set_domain,
-	.reset = LUSTRE_reset,
-	.ntv_enum_events = LUSTRE_ntv_enum_events,
-	.ntv_code_to_name = LUSTRE_ntv_code_to_name,
-	.ntv_code_to_descr = LUSTRE_ntv_code_to_descr,
-	.ntv_code_to_bits = LUSTRE_ntv_code_to_bits,
-	.ntv_bits_to_info = LUSTRE_ntv_bits_to_info
+     /* sizes of framework-opaque component-private structures */
+  .size = {
+       .context = sizeof ( LUSTRE_context_t ),
+       .control_state = sizeof ( LUSTRE_control_state_t ),
+       .reg_value = sizeof ( LUSTRE_register_t ),
+       .reg_alloc = sizeof ( LUSTRE_reg_alloc_t ),
+  },
+
+     /* function pointers in this component */
+  .init_thread =           _lustre_init_thread,
+  .init_component =        _lustre_init_component,
+  .init_control_state =    _lustre_init_control_state,
+  .start =                 _lustre_start,
+  .stop =                  _lustre_stop,
+  .read =                  _lustre_read,
+  .shutdown_thread =       _lustre_shutdown_thread,
+  .shutdown_component =    _lustre_shutdown_component,
+  .ctl =                   _lustre_ctl,
+  .update_control_state =  _lustre_update_control_state,
+  .set_domain =            _lustre_set_domain,
+  .reset =                 _lustre_reset,
+
+  .ntv_enum_events =   _lustre_ntv_enum_events,
+  .ntv_code_to_name =  _lustre_ntv_code_to_name,
+  .ntv_code_to_descr = _lustre_ntv_code_to_descr,
+
 };
+
+
+
+

@@ -19,12 +19,11 @@ C 2 counters.
       INTEGER n
       INTEGER EventSet
       INTEGER retval
-      INTEGER I,j, errorcode
+      INTEGER I,j 
       INTEGER*8 gl(3)
-      CHARACTER*(PAPI_MAX_STR_LEN) errorstring
 
-      INTEGER len_trim
-      EXTERNAL len_trim
+      INTEGER last_char
+      EXTERNAL last_char
 
       integer tests_quiet, get_quiet
       external get_quiet
@@ -59,10 +58,8 @@ C 2 counters.
       if (j .NE. 0) then
         call PAPIf_add_event( EventSet, PAPI_BR_CN, retval )
         if ( retval .NE. PAPI_OK ) then
-           call PAPIf_perror( retval, errorstring, errorcode)
            if (tests_quiet .EQ. 0) then
-              print *, 'Can not add PAPI_L2_TCM: '//
-     $             errorstring(1:len_trim(errorstring))
+            call PAPIf_perror( 'PAPIf_add_event' )
            endif
         end if
       end if
@@ -76,10 +73,8 @@ C 2 counters.
       if (j .EQ. i+1) then
          call PAPIf_add_event( EventSet, PAPI_TOT_CYC, retval )
          if ( retval .NE. PAPI_OK )then
-            call PAPIf_perror( retval, errorstring, errorcode)
             if (tests_quiet .EQ. 0) then
-               print *, 'Can not add PAPI_TOT_CYC: '//
-     $              errorstring(1:len_trim(errorstring))
+                call PAPIf_perror( 'PAPIf_add_event' )
             end if 
          end if
       end if
@@ -93,10 +88,8 @@ C 2 counters.
          call PAPIf_add_event(EventSet,PAPI_TOT_INS,retval)
          if ( retval .NE. PAPI_OK )then
            if ( retval .NE. PAPI_ECNFLCT ) then
-            call PAPIf_perror( retval, errorstring, errorcode)
             if (tests_quiet .EQ. 0) then
-               print *, 'Can not add PAPI_TOT_INS: '//
-     $              errorstring(1:len_trim(errorstring))
+                call PAPIf_perror( 'PAPIf_add_event' )
             end if
           end if
          end if

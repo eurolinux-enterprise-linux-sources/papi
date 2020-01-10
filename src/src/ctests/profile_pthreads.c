@@ -20,7 +20,6 @@ Thread( void *arg )
 	long long **values;
 	long long elapsed_us, elapsed_cyc;
 	unsigned short *profbuf;
-	const PAPI_hw_info_t *hw_info = PAPI_get_hardware_info(  );
 	char event_name[PAPI_MAX_STR_LEN];
 
 	retval = PAPI_register_thread(  );
@@ -35,7 +34,7 @@ Thread( void *arg )
 	   PAPI_TOT_INS, depends on the availability of the event on the
 	   platform */
 	EventSet1 =
-		add_two_nonderived_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+		add_two_nonderived_events( &num_events1, &PAPI_event, &mask1 );
 
 	values = allocate_test_space( num_tests, num_events1 );
 
@@ -130,7 +129,7 @@ main( int argc, char **argv )
 		   PAPI_thread_init( ( unsigned
 							   long ( * )( void ) ) ( pthread_self ) ) ) !=
 		 PAPI_OK ) {
-		if ( retval == PAPI_ESBSTR )
+		if ( retval == PAPI_ECMP )
 			test_skip( __FILE__, __LINE__, "PAPI_thread_init", retval );
 		else
 			test_fail( __FILE__, __LINE__, "PAPI_thread_init", retval );

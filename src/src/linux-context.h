@@ -4,7 +4,11 @@
 /* Signal handling functions */
 
 #undef hwd_siginfo_t
-typedef struct siginfo hwd_siginfo_t;
+
+/* Changed from struct siginfo due to POSIX and Fedora 18       */
+/* If this breaks anything then we need to add an aufoconf test */
+typedef siginfo_t hwd_siginfo_t;
+
 #undef hwd_ucontext_t
 typedef ucontext_t hwd_ucontext_t;
 
@@ -25,6 +29,10 @@ typedef ucontext_t hwd_ucontext_t;
 #define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.regs->nip
 #elif defined(__sparc__)
 #define OVERFLOW_ADDRESS(ctx) ((struct sigcontext *)ctx.ucontext)->si_regs.pc
+#elif defined(__arm__)
+#define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.arm_pc
+#elif defined(__mips__)
+#define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.pc
 #else
 #error "OVERFLOW_ADDRESS() undefined!"
 #endif

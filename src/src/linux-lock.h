@@ -1,11 +1,37 @@
 #ifndef _LINUX_LOCK_H
 #define _LINUX_LOCK_H
 
+#include "mb.h"
+
 /* Locking functions */
+
+#if defined(USE_PTHREAD_MUTEXES)
+
+#include <pthread.h>
+
+extern pthread_mutex_t _papi_hwd_lock_data[PAPI_MAX_LOCK];
+
+#define  _papi_hwd_lock(lck)                       \
+do                                                 \
+{                                                  \
+   pthread_mutex_lock (&_papi_hwd_lock_data[lck]); \
+} while(0)
+#define  _papi_hwd_unlock(lck)                     \
+do                                                 \
+{                                                  \
+  pthread_mutex_unlock(&_papi_hwd_lock_data[lck]); \
+} while(0)
+
+
+#else
 
 extern volatile unsigned int _papi_hwd_lock_data[PAPI_MAX_LOCK];
 #define MUTEX_OPEN 0
 #define MUTEX_CLOSED 1
+
+/********/
+/* ia64 */
+/********/
 
 #if defined(__ia64__)
 #ifdef __INTEL_COMPILER
@@ -21,6 +47,11 @@ extern volatile unsigned int _papi_hwd_lock_data[PAPI_MAX_LOCK];
 
 #define _papi_hwd_unlock(lck) {  __asm__ __volatile__ ("st4.rel [%0]=%1" : : "r"(&_papi_hwd_lock_data[lck]), "r"(MUTEX_OPEN) : "memory"); }
 #endif
+
+/***********/
+/* x86     */
+/***********/
+
 #elif defined(__i386__)||defined(__x86_64__)
 #define  _papi_hwd_lock(lck)                    \
 do                                              \
@@ -36,6 +67,11 @@ do                                              \
    unsigned int res = 0;                       \
    __asm__ __volatile__ ("xchg %0,%1" : "=r"(res) : "m"(_papi_hwd_lock_data[lck]), "0"(MUTEX_OPEN) : "memory");                                \
 } while(0)
+
+/***************/
+/* power       */
+/***************/
+
 #elif defined(__powerpc__)
 
 /*
@@ -76,6 +112,11 @@ do {                                                    \
   unsigned int retval;                                 \
   retval = papi_xchg_u32(&_papi_hwd_lock_data[lck],MUTEX_OPEN); \
 } while(0)
+
+/*****************/
+/* SPARC         */
+/*****************/
+
 #elif defined(__sparc__)
 static inline void
 __raw_spin_lock( volatile unsigned int *lock )
@@ -92,8 +133,99 @@ __raw_spin_unlock( volatile unsigned int *lock )
 
 #define  _papi_hwd_lock(lck) __raw_spin_lock(&_papi_hwd_lock_data[lck]);
 #define  _papi_hwd_unlock(lck) __raw_spin_unlock(&_papi_hwd_lock_data[lck])
+
+/*******************/
+/* ARM             */
+/*******************/
+
+#elif defined(__arm__)
+
+#if 0
+
+/* OLD CODE FROM VINCE BELOW */
+
+/* FIXME */
+/* not sure if this even works            */
+/* also the various flavors of ARM        */
+/* have differing levels of atomic        */
+/* instruction support.  A proper         */
+/* implementation needs to handle this :( */
+
+#warning "WARNING!  Verify mutexes work on ARM!"
+
+/*
+ * For arm/gcc, 0 is clear, 1 is set.
+ */
+#define MUTEX_SET(tsl) ({      \
+  int __r;                     \
+  asm volatile(                \
+  "swpb   %0, %1, [%2]\n\t"    \
+  "eor    %0, %0, #1\n\t"      \
+  : "=&r" (__r)                \
+  : "r" (1), "r" (tsl)         \
+  );                           \
+  __r & 1;                     \
+    })
+
+#define  _papi_hwd_lock(lck) MUTEX_SET(lck)
+#define  _papi_hwd_unlock(lck) (*(volatile int *)(lck) = 0)
+#endif
+
+/* NEW CODE FROM PHIL */
+
+static inline int __arm_papi_spin_lock (volatile unsigned int *lock)
+{
+  unsigned int val;
+
+  do
+    asm volatile ("swp %0, %1, [%2]"
+		  : "=r" (val)
+		  : "0" (1), "r" (lock)
+		  : "memory");
+  while (val != 0);
+
+  return 0;
+}
+#define _papi_hwd_lock(lck)   { rmb(); __arm_papi_spin_lock(&_papi_hwd_lock_data[lck]); rmb(); }
+#define _papi_hwd_unlock(lck) { rmb(); _papi_hwd_lock_data[lck] = 0; rmb(); }
+
+#elif defined(__mips__)
+static inline void __raw_spin_lock(volatile unsigned int *lock)
+{
+  unsigned int tmp;
+		__asm__ __volatile__(
+		"       .set    noreorder       # __raw_spin_lock       \n"
+		"1:     ll      %1, %2                                  \n"
+		"       bnez    %1, 1b                                  \n"
+		"        li     %1,  1                                   \n"
+		"       sc      %1, %0                                  \n"
+		"       beqzl   %1, 1b                                  \n"
+		"        nop                                            \n"
+		"       sync                                            \n"
+		"       .set    reorder                                 \n"
+		: "=m" (*lock), "=&r" (tmp)
+		: "m" (*lock)
+		: "memory");
+}
+
+static inline void __raw_spin_unlock(volatile unsigned int *lock)
+{
+	__asm__ __volatile__(
+	"       .set    noreorder       # __raw_spin_unlock     \n"
+	"       sync                                            \n"
+	"       sw      $0, %0                                  \n"
+	"       .set\treorder                                   \n"
+	: "=m" (*lock)
+	: "m" (*lock)
+	: "memory");
+}
+#define  _papi_hwd_lock(lck) __raw_spin_lock(&_papi_hwd_lock_data[lck]);
+#define  _papi_hwd_unlock(lck) __raw_spin_unlock(&_papi_hwd_lock_data[lck])
 #else
+
 #error "_papi_hwd_lock/unlock undefined!"
 #endif
 
 #endif
+
+#endif /* defined(USE_PTHREAD_MUTEXES) */

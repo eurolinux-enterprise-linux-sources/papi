@@ -7,9 +7,9 @@
  * 
  * @name       .indent.pro
  * 
- * @version    $Revision: 1.1 $ <br>
- *             $Date: 2010/02/22 18:36:00 $ <br>
- *             $Author: jagode $
+ * @version    $Revision$ <br>
+ *             $Date$ <br>
+ *             $Author$
  * 
  * @author     Heike Jagode
  */

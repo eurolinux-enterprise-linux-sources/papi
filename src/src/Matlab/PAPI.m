@@ -80,5 +80,5 @@
 %
 %   Copyright 2001 - 2004 The Innovative Computing Laboratory,
 %                               University of Tennessee.
-%   $Revision: 1.1 $  $Date: 2004/02/28 19:07:22 $
+%   $Revision$  $Date$
 

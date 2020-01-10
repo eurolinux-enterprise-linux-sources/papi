@@ -1,4 +1,4 @@
-# $Id: Rules.coretemp,v 1.1 2010/08/31 20:54:23 ralph Exp $
+# $Id$
 
 COMPSRCS += components/coretemp/linux-coretemp.c 
 COMPOBJS += linux-coretemp.o

@@ -1,6 +1,5 @@
 /**
  * @file    papi_memory.c
- * CVS:     $Id: papi_memory.c,v 1.24 2011/05/06 14:29:18 ralph Exp $
  * @author  Kevin London
  *          london@cs.utk.edu
  * PAPI memory allocation provides for checking and maintenance of all memory
@@ -20,8 +19,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include "papi.h"
-#include "papi_internal.h"
+#include "papi_lock.h"
 #include "papi_memory.h"
+#include "papi_internal.h"
+
 
 /** Define the amount of extra memory at the beginning of the alloc'd pointer.
  * This is usually the size of a pointer, but in some cases needs to be bigger
@@ -321,8 +322,9 @@ _papi_mem_cleanup_all(  )
 	}
 	_papi_hwi_unlock( MEMORY_LOCK );
 #ifdef DEBUG
-	if ( cnt )
+	if ( 0 != cnt ) { 
 		LEAKDBG( "TOTAL MEMORY LEAK: %d bytes.\n", cnt );
+	}
 #endif
 }
 

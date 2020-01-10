@@ -6,13 +6,7 @@
 #include "papi_test.h"
 
 
-#ifdef _WIN32
-#define INDEX 275			 /* This fixes stack overflow on Windows.
-							    It shouldn't be needed using the Windows /F switch
-							    but I can't seem to make that switch work */
-#else
 #define INDEX 500
-#endif
 extern int TESTS_QUIET;				   /* Declared in test_utils.c */
 
 
@@ -30,9 +24,11 @@ main( int argc, char **argv )
 
 
 	/* Initialize the Matrix arrays */
-	for ( i = 0; i < INDEX * INDEX; i++ ) {
-		mresult[0][i] = 0.0;
-		matrixa[0][i] = matrixb[0][i] = ( float ) rand(  ) * ( float ) 1.1;
+	for( i = 0; i < INDEX; i++ ) {
+	   for( j= 0; j < INDEX; j++ ) {
+	       mresult[i][j] = 0.0;
+	       matrixa[i][j] = matrixb[i][j] = ( float ) rand(  ) * ( float ) 1.1;
+	   }
 	}
 
 	/* Setup PAPI library and begin collecting data from the counters */

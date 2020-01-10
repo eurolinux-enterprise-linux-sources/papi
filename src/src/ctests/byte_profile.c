@@ -1,6 +1,6 @@
 /* 
 * File:    byte_profile.c
-* CVS:     $Id: byte_profile.c,v 1.22 2010/08/26 22:03:33 vweaver1 Exp $
+* CVS:     $Id$
 * Author:  Dan Terpstra
 *          terpstra@cs.utk.edu
 * Mods:    Maynard Johnson
@@ -16,127 +16,100 @@
    block of code at byte level resolution of the instruction addresses.
 */
 
+#include "papi_test.h"
 #include "prof_utils.h"
 #define PROFILE_ALL
 
-static int do_profile( caddr_t start, unsigned long plength, unsigned scale,
-					   int thresh, int bucket );
-static void cleara( double a[] );
-static void my_main(  );
-static int my_dummy( int i );
-
 static const PAPI_hw_info_t *hw_info;
 
-int
-main( int argc, char **argv )
+static int num_events = 0;
+
+#define N (1 << 23)
+#define T (10)
+
+double aa[N], bb[N];
+double s = 0, s2 = 0;
+
+static void
+cleara( double a[N] )
 {
-	int num_events = 0;
-	long length;
-	int mask;
-	int retval;
-	const PAPI_exe_info_t *prginfo;
-	caddr_t start, end;
+	int i;
 
-	prof_init( argc, argv, &hw_info, &prginfo );
+	for ( i = 0; i < N; i++ ) {
+		a[i] = 0;
+	}
+}
 
-#if defined(__powerpc__)
-	if ( strcmp( hw_info->model_string, "POWER6" ) == 0 )
-		mask = MASK_TOT_CYC | MASK_FP_INS;
-	else
-		mask = MASK_TOT_CYC | MASK_TOT_INS | MASK_FP_INS;
-#else
-#if defined(ITANIUM2)
-	mask = MASK_TOT_CYC | MASK_FP_OPS | MASK_L2_TCM | MASK_L1_DCM;
-#else
-	if ( PAPI_get_opt( PAPI_MAX_HWCTRS, NULL ) == 2 )
-		mask = MASK_TOT_CYC | MASK_TOT_INS;
-	else
-		mask = MASK_TOT_CYC | MASK_TOT_INS | MASK_FP_OPS | MASK_L2_TCM;
-#endif
-#endif
+static int
+my_dummy( int i )
+{
+	return ( i + 1 );
+}
 
-	EventSet = add_test_events( &num_events, &mask );
-	values = allocate_test_space( 1, num_events );
+static void
+my_main(  )
+{
+	int i, j;
 
-/* profile the cleara and my_main address space */
-	start = ( caddr_t ) cleara;
-	end = ( caddr_t ) my_dummy;
-
-/* Itanium and PowerPC64 processors return function descriptors instead
- * of function addresses. You must dereference the descriptor to get the address.
-*/
-#if defined(ITANIUM1) || defined(ITANIUM2) || defined(__powerpc64__)
-	start = ( caddr_t ) ( ( ( struct fdesc * ) start )->ip );
-	end = ( caddr_t ) ( ( ( struct fdesc * ) end )->ip );
-#endif
-
-	/* call dummy so it doesn't get optimized away */
-	retval = my_dummy( 1 );
-
-	length = end - start;
-	if ( length < 0 )
-		test_fail( __FILE__, __LINE__, "Profile length < 0!", ( int ) length );
-
-	prof_print_address
-		( "Test case byte_profile: Multi-event profiling at byte resolution.\n",
-		  prginfo );
-	prof_print_prof_info( start, end, THRESHOLD, event_name );
-
-	retval =
-		do_profile( start, ( unsigned ) length, FULL_SCALE * 2, THRESHOLD,
-					PAPI_PROFIL_BUCKET_32 );
-
-	remove_test_events( &EventSet, mask );
-
-	if ( retval )
-		test_pass( __FILE__, values, 1 );
-	else
-		test_fail( __FILE__, __LINE__, "No information in buffers", 1 );
-	exit( 1 );
+	for ( j = 0; j < T; j++ ) {
+		for ( i = 0; i < N; i++ ) {
+			bb[i] = 0;
+		}
+		cleara( aa );
+		memset( aa, 0, sizeof ( aa ) );
+		for ( i = 0; i < N; i++ ) {
+			s += aa[i] * bb[i];
+			s2 += aa[i] * aa[i] + bb[i] * bb[i];
+		}
+	}
 }
 
 static int
 do_profile( caddr_t start, unsigned long plength, unsigned scale, int thresh,
-			int bucket )
-{
+	    int bucket, unsigned int mask ) {
+
 	int i, retval;
 	unsigned long blength;
-	int num_buckets;
-
-	const int *events;
-#if defined(__powerpc__)
-	const int power6_events[] = { PAPI_TOT_CYC, PAPI_FP_INS };
-	int power6_num_events = 2;
-	int std_events[] = { PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_FP_INS };
-	int num_events = 3;
-	char *header = "address\t\t\tcyc\tins\tfp_ins\n";
-#else
-	const int power6_events[] = { };
-	int power6_num_events = 0;
-#if defined(ITANIUM2)
-	const int std_events[] =
-		{ PAPI_TOT_CYC, PAPI_FP_OPS, PAPI_L2_TCM, PAPI_L1_DCM };
-#else
-	const int std_events[] =
-		{ PAPI_TOT_CYC, PAPI_TOT_INS, PAPI_FP_OPS, PAPI_L2_TCM };
-#endif
-	int num_events = 4;
-	char *header = "address\t\t\tcyc\tins\tfp_ops\tl2_tcm\n";
-#endif
-	const int p3_events[] = { PAPI_TOT_CYC, PAPI_TOT_INS };
-
-	if ( strcmp( hw_info->model_string, "POWER6" ) == 0 ) {
-		events = power6_events;
-		num_events = power6_num_events;
-	} else if ( PAPI_get_opt( PAPI_MAX_HWCTRS, NULL ) == 2 ) {
-		events = p3_events;
-		num_events = 2;
-	} else {
-		events = std_events;
-	}
+	int num_buckets,j=0;
 
 	int num_bufs = num_events;
 	int event = num_events;
+
+	int events[MAX_TEST_EVENTS];
+	char header[BUFSIZ];
+
+	strncpy(header,"address\t\t",BUFSIZ);
+
+	//= "address\t\t\tcyc\tins\tfp_ins\n";
+
+	for(i=0;i<MAX_TEST_EVENTS;i++) {
+	  if (mask & test_events[i].mask) {
+	    events[j]=test_events[i].event;
+
+	    if (events[j]==PAPI_TOT_CYC) {
+	       strncat(header,"\tcyc",BUFSIZ-1);
+	    }
+	    if (events[j]==PAPI_TOT_INS) {
+	       strncat(header,"\tins",BUFSIZ-1);
+	    }
+	    if (events[j]==PAPI_FP_INS) {
+	       strncat(header,"\tfp_ins",BUFSIZ-1);
+	    }
+	    if (events[j]==PAPI_FP_OPS) {
+	       strncat(header,"\tfp_ops",BUFSIZ-1);
+	    }
+	    if (events[j]==PAPI_L2_TCM) {
+	       strncat(header,"\tl2_tcm",BUFSIZ-1);
+	    }
+
+	    j++;
+
+	  }
+	}
+
+	strncat(header,"\n",BUFSIZ-1);
+
+
 
 	blength = prof_size( plength, scale, bucket, &num_buckets );
 	prof_alloc( num_bufs, blength );
@@ -155,6 +128,7 @@ do_profile( caddr_t start, unsigned long plength, unsigned scale, int thresh,
 		      break;
 		   }
                    else {
+		        printf("Failed with event %d 0x%x\n",i,events[i]);
 			test_fail( __FILE__, __LINE__, "PAPI_profil", retval );
 		   }
 		}
@@ -197,44 +171,79 @@ do_profile( caddr_t start, unsigned long plength, unsigned scale, int thresh,
 	for ( i = 0; i < num_bufs; i++ ) {
 		free( profbuf[i] );
 	}
-	return ( retval );
+	return retval;
 }
 
-#define N (1 << 23)
-#define T (10)
 
-double aa[N], bb[N];
-double s = 0, s2 = 0;
 
-static void
-cleara( double a[N] )
+int
+main( int argc, char **argv )
 {
-	int i;
+	long length;
+	int mask;
+	int retval;
+	const PAPI_exe_info_t *prginfo;
+	caddr_t start, end;
 
-	for ( i = 0; i < N; i++ ) {
-		a[i] = 0;
-	}
-}
-static void
-my_main(  )
-{
-	int i, j;
+	prof_init( argc, argv, &prginfo );
 
-	for ( j = 0; j < T; j++ ) {
-		for ( i = 0; i < N; i++ ) {
-			bb[i] = 0;
-		}
-		cleara( aa );
-		memset( aa, 0, sizeof ( aa ) );
-		for ( i = 0; i < N; i++ ) {
-			s += aa[i] * bb[i];
-			s2 += aa[i] * aa[i] + bb[i] * bb[i];
-		}
-	}
+	hw_info = PAPI_get_hardware_info(  );
+        if ( hw_info == NULL )
+	  test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
+
+       	mask = MASK_TOT_CYC | MASK_TOT_INS | MASK_FP_OPS | MASK_L2_TCM;
+
+#if defined(__powerpc__)
+	if ( strcmp( hw_info->model_string, "POWER6" ) == 0 )
+		mask = MASK_TOT_CYC | MASK_FP_INS;
+	else
+		mask = MASK_TOT_CYC | MASK_TOT_INS | MASK_FP_INS;
+#endif
+
+#if defined(ITANIUM2)
+	mask = MASK_TOT_CYC | MASK_FP_OPS | MASK_L2_TCM | MASK_L1_DCM;
+#endif
+	EventSet = add_test_events( &num_events, &mask, 0 );
+	values = allocate_test_space( 1, num_events );
+
+/* profile the cleara and my_main address space */
+	start = ( caddr_t ) cleara;
+	end = ( caddr_t ) my_dummy;
+
+/* Itanium and PowerPC64 processors return function descriptors instead
+ * of function addresses. You must dereference the descriptor to get the address.
+*/
+#if defined(ITANIUM1) || defined(ITANIUM2) || defined(__powerpc64__)
+	start = ( caddr_t ) ( ( ( struct fdesc * ) start )->ip );
+	end = ( caddr_t ) ( ( ( struct fdesc * ) end )->ip );
+#endif
+
+	/* call dummy so it doesn't get optimized away */
+	retval = my_dummy( 1 );
+
+	length = end - start;
+	if ( length < 0 )
+		test_fail( __FILE__, __LINE__, "Profile length < 0!", ( int ) length );
+
+	prof_print_address
+		( "Test case byte_profile: Multi-event profiling at byte resolution.\n",
+		  prginfo );
+	prof_print_prof_info( start, end, THRESHOLD, event_name );
+
+	retval =
+		do_profile( start, ( unsigned ) length, 
+			    FULL_SCALE * 2, THRESHOLD,
+			    PAPI_PROFIL_BUCKET_32, mask );
+
+	remove_test_events( &EventSet, mask );
+
+	if ( retval )
+		test_pass( __FILE__, values, 1 );
+	else
+		test_fail( __FILE__, __LINE__, "No information in buffers", 1 );
+	return 1;
 }
 
-static int
-my_dummy( int i )
-{
-	return ( i + 1 );
-}
+
+
+

@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
 # File: components/lmsensors/configure.in
-# CVS: $Id: configure.in,v 1.1 2010/04/29 15:45:50 bsheely Exp $
+# CVS: $Id$
 
 AC_INIT
 AC_ARG_WITH(sensors_incdir,
@@ -20,7 +20,7 @@ AC_ARG_WITH(sensors_libdir,
              AC_CHECK_LIB([sensors], 
                           [sensors_init], 
                           [],				          
-                          [AC_MSG_ERROR([libsensors.a not found])])],
+                          [AC_MSG_ERROR([libsensors not found])])],
             [AC_MSG_ERROR([Component requires path to sensors library])])
 
 AC_SUBST(SENSORS_INCDIR)

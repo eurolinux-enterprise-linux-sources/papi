@@ -21,9 +21,10 @@ hwd_groups_t group_map[MAX_GROUPS] = { {0}
 , {0}
 };
 native_event_entry_t native_table[PAPI_MAX_NATIVE_EVENTS];
+
 /* to initialize the native_table */
 void
-initialize_native_table(  )
+perfctr_initialize_native_table(  )
 {
 	int i, j;
 	memset( native_table, 0,
@@ -34,9 +35,10 @@ initialize_native_table(  )
 	}
 }
 
+
 /* to setup native_table group value */
 void
-ppc64_setup_gps( int total, ntv_event_group_info_t * group_info )
+perfctr_ppc64_setup_gps( int total, ntv_event_group_info_t * group_info )
 {
 	int i, j, gnum;
 
@@ -68,18 +70,18 @@ ppc64_setup_gps( int total, ntv_event_group_info_t * group_info )
 
 /* to setup native_table values, and return number of entries */
 int
-setup_ppc64_native_table(  )
+perfctr_ppc64_setup_native_table(  )
 {
 	int pmc, ev, i, j, index;
 	/* This is for initialisation-testing of consistency between
 	   native_name_map and our events file */
 	int itemCount = 0;
 	index = 0;
-	initialize_native_table(  );
+	perfctr_initialize_native_table(  );
 	ntv_event_info_t *info = perfctr_get_native_evt_info(  );
 	if ( info == NULL ) {
 		PAPIERROR( EVENT_INFO_FILE_ERROR );
-		return PAPI_ESBSTR;
+		return PAPI_ECMP;
 	}
 	ntv_event_t *wevp;
 	for ( pmc = 0; pmc < info->maxpmcs; pmc++ ) {
@@ -151,12 +153,12 @@ setup_ppc64_native_table(  )
 
 	ntv_event_group_info_t *gp_info = perfctr_get_native_group_info(  );
 	if ( gp_info == NULL ) {
-		initialize_native_table(  );
+		perfctr_initialize_native_table(  );
 		PAPIERROR( EVENT_INFO_FILE_ERROR );
-		return PAPI_ESBSTR;
+		return PAPI_ECMP;
 	}
 
-	ppc64_setup_gps( index, gp_info );
+	perfctr_ppc64_setup_gps( index, gp_info );
 	_papi_hwi_system_info.sub_info.num_native_events = index;
 
 	return check_native_name(  );

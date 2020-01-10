@@ -1,0 +1,22 @@
+--- papi-5.0.1/src/configure.in.orig	2013-01-21 11:10:32.227751345 -0500
++++ papi-5.0.1/src/configure.in	2013-01-21 11:10:42.948743700 -0500
+@@ -1180,7 +1180,7 @@
+ SHLIB='libpapi.so.$(PAPIVER)'
+ OMPCFLGS=-fopenmp
+ CC_R='$(CC) -pthread'
+-CC_SHR='$(CC) -fPIC -DPIC -shared -Wl,-soname -Wl,libpapi.so -Xlinker "-rpath" -Xlinker "$(LIBDIR)"'
++CC_SHR='$(CC) -fPIC -DPIC -shared -Wl,-soname -Wl,libpapi.so.5 -Xlinker "-rpath" -Xlinker "$(LIBDIR)"'
+ if test "$CC_COMMON_NAME" = "gcc"; then
+ 	if test "$bitmode" = "32"; then
+ 		BITFLAGS=-m32
+--- papi-5.0.1/src/configure.orig	2013-01-21 11:10:35.852747230 -0500
++++ papi-5.0.1/src/configure	2013-01-21 11:10:48.601753810 -0500
+@@ -7029,7 +7029,7 @@
+ SHLIB='libpapi.so.$(PAPIVER)'
+ OMPCFLGS=-fopenmp
+ CC_R='$(CC) -pthread'
+-CC_SHR='$(CC) -fPIC -DPIC -shared -Wl,-soname -Wl,libpapi.so -Xlinker "-rpath" -Xlinker "$(LIBDIR)"'
++CC_SHR='$(CC) -fPIC -DPIC -shared -Wl,-soname -Wl,libpapi.so.5 -Xlinker "-rpath" -Xlinker "$(LIBDIR)"'
+ if test "$CC_COMMON_NAME" = "gcc"; then
+ 	if test "$bitmode" = "32"; then
+ 		BITFLAGS=-m32

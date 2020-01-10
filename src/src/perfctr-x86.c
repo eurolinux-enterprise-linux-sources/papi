@@ -1,41 +1,45 @@
 /* 
 * File:    perfctr-x86.c
-* CVS:     $Id: perfctr-x86.c,v 1.20 2011/02/11 21:48:05 vweaver1 Exp $
 * Author:  Brian Sheely
 *          bsheely@eecs.utk.edu
 * Mods:    <your name here>
 *          <your email address>
 */
 
+#include <string.h>
+#include <linux/unistd.h>
+
+#include "papi.h"
 #include "papi_memory.h"
 #include "papi_internal.h"
 #include "perfctr-x86.h"
 #include "perfmon/pfmlib.h"
-#include "papi_pfm_events.h"
+#include "extras.h"
+#include "papi_vector.h"
+#include "papi_libpfm_events.h"
 
-extern native_event_entry_t *native_table;
-extern hwi_search_t *preset_search_map;
-extern caddr_t _start, _init, _etext, _fini, _end, _edata, __bss_start;
-extern unsigned char PENTIUM4;
-
+#include "papi_preset.h"
 #include "linux-memory.h"
 
+/* Contains source for the Modified Bipartite Allocation scheme */
+#include "papi_bipartite.h"
+
 /* Prototypes for entry points found in perfctr.c */
-extern int _perfctr_init_substrate( int );
+extern int _perfctr_init_component( int );
 extern int _perfctr_ctl( hwd_context_t * ctx, int code,
 					   _papi_int_option_t * option );
 extern void _perfctr_dispatch_timer( int signal, hwd_siginfo_t * si,
 								   void *context );
 
-extern int _perfctr_init( hwd_context_t * ctx );
-extern int _perfctr_shutdown( hwd_context_t * ctx );
+extern int _perfctr_init_thread( hwd_context_t * ctx );
+extern int _perfctr_shutdown_thread( hwd_context_t * ctx );
 
 #include "linux-common.h"
 #include "linux-timer.h"
 
 extern papi_mdi_t _papi_hwi_system_info;
 
-extern papi_vector_t MY_VECTOR;
+extern papi_vector_t _perfctr_vector;
 
 #if defined(PERFCTR26)
 #define evntsel_aux p4.escr
@@ -68,54 +72,38 @@ extern papi_vector_t MY_VECTOR;
 #define AMD_FPU "SPECULATIVE"
 #endif
 
-static int
-_papi_pfm_init(  )
-{
-	int retval;
-	unsigned int ncnt;
+static inline int is_pentium4(void) {
+  if ( ( _papi_hwi_system_info.hw_info.vendor == PAPI_VENDOR_INTEL ) &&
+       ( _papi_hwi_system_info.hw_info.cpuid_family == 15 )) {
+    return 1;
+  }
 
-	/* Opened once for all threads. */
-	SUBDBG( "pfm_initialize()\n" );
-	if ( ( retval = pfm_initialize(  ) ) != PFMLIB_SUCCESS ) {
-		PAPIERROR( "pfm_initialize(): %s", pfm_strerror( retval ) );
-		return ( PAPI_ESBSTR );
-	}
+  return 0;
 
-	/* Fill in MY_VECTOR.cmp_info.num_native_events */
-
-	SUBDBG( "pfm_get_num_events(%p)\n", &ncnt );
-	if ( ( retval = pfm_get_num_events( &ncnt ) ) != PFMLIB_SUCCESS ) {
-		PAPIERROR( "pfm_get_num_events(%p): %s", &ncnt,
-				   pfm_strerror( retval ) );
-		return ( PAPI_ESBSTR );
-	}
-	SUBDBG( "pfm_get_num_events() returns: %d\n", ncnt );
-	MY_VECTOR.cmp_info.num_native_events = ( int ) ncnt;
-	return ( PAPI_OK );
 }
 
 static int
-_papi_hwd_fixup_vec( void )
+_papi_hwd_fixup_vec( int cidx )
 {
 	char table_name[PAPI_MIN_STR_LEN] = "Intel Pentium4 VEC ";
 	char *str = getenv( "PAPI_PENTIUM4_VEC" );
 
 	/* if the env variable isn't set, use the default */
 	if ( ( str == NULL ) || ( strlen( str ) == 0 ) ) {
-		strcat( table_name, P4_VEC );
+	   strcat( table_name, P4_VEC );
 	} else {
-		strcat( table_name, str );
+	   strcat( table_name, str );
 	}
-	if ( ( _papi_pfm_setup_presets( table_name, 0 ) ) != PAPI_OK ) {
-		PAPIERROR
-			( "Improper usage of PAPI_PENTIUM4_VEC environment variable.\nUse either SSE or MMX" );
-		return ( PAPI_ESBSTR );
+	if ( ( _papi_load_preset_table( table_name, 0, cidx ) ) != PAPI_OK ) {
+	   PAPIERROR( "Improper usage of PAPI_PENTIUM4_VEC environment "
+                      "variable.\nUse either SSE or MMX" );
+	   return PAPI_EINVAL;
 	}
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 static int
-_papi_p4_hwd_fixup_fp( void )
+_papi_p4_hwd_fixup_fp( int cidx )
 {
 	char table_name[PAPI_MIN_STR_LEN] = "Intel Pentium4 FPU";
 	char *str = getenv( "PAPI_PENTIUM4_FP" );
@@ -131,16 +119,16 @@ _papi_p4_hwd_fixup_fp( void )
 		if ( strstr( str, "SSE_DP" ) )
 			strcat( table_name, " SSE_DP" );
 	}
-	if ( ( _papi_pfm_setup_presets( table_name, 0 ) ) != PAPI_OK ) {
-		PAPIERROR
-			( "Improper usage of PAPI_PENTIUM4_FP environment variable.\nUse one or two of X87,SSE_SP,SSE_DP" );
-		return ( PAPI_ESBSTR );
+	if ( ( _papi_load_preset_table( table_name, 0, cidx ) ) != PAPI_OK ) {
+	   PAPIERROR( "Improper usage of PAPI_PENTIUM4_FP environment "
+                      "variable.\nUse one or two of X87,SSE_SP,SSE_DP" );
+	   return PAPI_EINVAL;
 	}
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 static int
-_papi_hwd_fixup_fp( char *name )
+_papi_hwd_fixup_fp( char *name, int cidx )
 {
 	char table_name[PAPI_MIN_STR_LEN];
 	char *str = getenv( "PAPI_OPTERON_FP" );
@@ -154,12 +142,13 @@ _papi_hwd_fixup_fp( char *name )
 		strcat( table_name, str );
 	}
 
-	if ( ( _papi_pfm_setup_presets( table_name, 0 ) ) != PAPI_OK ) {
-		PAPIERROR
-			( "Improper usage of PAPI_OPTERON_FP environment variable.\nUse one of RETIRED, SPECULATIVE, SSE_SP, SSE_DP" );
-		return ( PAPI_ESBSTR );
+	if ( ( _papi_load_preset_table( table_name, 0, cidx ) ) != PAPI_OK ) {
+	   PAPIERROR( "Improper usage of PAPI_OPTERON_FP environment "
+                      "variable.\nUse one of RETIRED, SPECULATIVE, "
+		      "SSE_SP, SSE_DP" );
+	   return PAPI_EINVAL;
 	}
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 #ifdef DEBUG
@@ -188,8 +177,9 @@ print_control( const struct perfctr_cpu_control *control )
 			SUBDBG( "pmc_map[%u]\t\t%u\n", i, control->pmc_map[i] );
 		}
 		SUBDBG( "evntsel[%u]\t\t0x%08X\n", i, control->evntsel[i] );
-		if ( control->ireset[i] )
+		if ( control->ireset[i] ) {
 			SUBDBG( "ireset[%u]\t%d\n", i, control->ireset[i] );
+		}
 	}
 }
 #endif
@@ -197,25 +187,29 @@ print_control( const struct perfctr_cpu_control *control )
 /* Assign the global native and preset table pointers, find the native
    table's size in memory and then call the preset setup routine. */
 int
-setup_x86_presets( int cputype )
+setup_x86_presets( int cputype, int cidx)
 {
-	int retval = PAPI_OK;
 
-	if ( PENTIUM4 ) {
+   int retval = PAPI_OK;
+
+   if ( ( retval = _papi_libpfm_init(&_perfctr_vector, cidx ) ) != PAPI_OK ) {
+      return retval;
+   }
+# if 0
+	if ( is_pentium4() ) {
 		/* load the baseline event map for all Pentium 4s */
-		if ( ( retval = _papi_pfm_init(  ) ) != PAPI_OK )
-			return ( retval );
-		_papi_pfm_setup_presets( "Intel Pentium4", 0 );	/* base events */
+
+	  _papi_load_preset_table( "Intel Pentium4", 0, cidx );	/* base events */
 
 		/* fix up the floating point and vector ops */
-		if ( ( retval = _papi_p4_hwd_fixup_fp(  ) ) != PAPI_OK )
+		if ( ( retval = _papi_p4_hwd_fixup_fp(cidx  ) ) != PAPI_OK )
 			return ( retval );
-		if ( ( retval = _papi_hwd_fixup_vec(  ) ) != PAPI_OK )
+		if ( ( retval = _papi_hwd_fixup_vec( cidx ) ) != PAPI_OK )
 			return ( retval );
 
 		/* install L3 cache events iff 3 levels of cache exist */
 		if ( _papi_hwi_system_info.hw_info.mem_hierarchy.levels == 3 )
-			_papi_pfm_setup_presets( "Intel Pentium4 L3", 0 );
+		  _papi_load_preset_table( "Intel Pentium4 L3", 0, cidx );
 
 		/* overload with any model dependent events */
 		if ( cputype == PERFCTR_X86_INTEL_P4 ) {
@@ -228,7 +222,7 @@ setup_x86_presets( int cputype )
 #endif
 		else {
 			PAPIERROR( MODEL_ERROR );
-			return ( PAPI_ESBSTR );
+			return PAPI_ENOIMPL;
 		}
 	} else {
 		switch ( cputype ) {
@@ -238,105 +232,93 @@ setup_x86_presets( int cputype )
 		case PERFCTR_X86_VIA_C3:
 		case PERFCTR_X86_INTEL_P5:
 		case PERFCTR_X86_INTEL_P5MMX:
-			SUBDBG( "This cpu is supported by the perfctr-x86 substrate\n" );
+			SUBDBG( "This cpu is not supported by the perfctr-x86 component\n" );
 			PAPIERROR( MODEL_ERROR );
-			return ( PAPI_ESBSTR );
+			return PAPI_ENOIMPL;
 		case PERFCTR_X86_INTEL_P6:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel P6", 0 );	/* base events */
+		  _papi_load_preset_table( "Intel P6", 0, cidx );	/* base events */
 			break;
 		case PERFCTR_X86_INTEL_PII:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel P6", 0 );	/* base events */
+		  _papi_load_preset_table( "Intel P6", 0, cidx );	/* base events */
 			break;
 		case PERFCTR_X86_INTEL_PIII:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel P6", 0 );	/* base events */
-			_papi_pfm_setup_presets( "Intel PentiumIII", 0 );	/* events that differ from Pentium M */
+		  _papi_load_preset_table( "Intel P6", 0, cidx );	/* base events */
+		  _papi_load_preset_table( "Intel PentiumIII", 0, cidx );	/* events that differ from Pentium M */
 			break;
 #ifdef PERFCTR_X86_INTEL_PENTM
 		case PERFCTR_X86_INTEL_PENTM:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel P6", 0 );	/* base events */
-			_papi_pfm_setup_presets( "Intel PentiumM", 0 );	/* events that differ from PIII */
+		  _papi_load_preset_table( "Intel P6", 0, cidx );	/* base events */
+		  _papi_load_preset_table( "Intel PentiumM", 0, cidx );	/* events that differ from PIII */
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_CORE
 		case PERFCTR_X86_INTEL_CORE:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Core Duo/Solo", 0 );
+		  _papi_load_preset_table( "Intel Core Duo/Solo", 0, cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_CORE2
 		case PERFCTR_X86_INTEL_CORE2:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Core2", 0 );
+		  _papi_load_preset_table( "Intel Core2", 0, cidx );
 			break;
 #endif
 		case PERFCTR_X86_AMD_K7:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "AMD64 (K7)", 0 );
+		  _papi_load_preset_table( "AMD64 (K7)", 0, cidx );
 			break;
 #ifdef PERFCTR_X86_AMD_K8	 /* this is defined in perfctr 2.5.x */
 		case PERFCTR_X86_AMD_K8:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "AMD64", 0 );
-			_papi_hwd_fixup_fp( "AMD64" );
+		  _papi_load_preset_table( "AMD64", 0, cidx );
+		  _papi_hwd_fixup_fp( "AMD64", cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_AMD_K8C	 /* this is defined in perfctr 2.6.x */
 		case PERFCTR_X86_AMD_K8C:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "AMD64", 0 );
-			_papi_hwd_fixup_fp( "AMD64" );
+		  _papi_load_preset_table( "AMD64", 0, cidx );
+		  _papi_hwd_fixup_fp( "AMD64", cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_AMD_FAM10 /* this is defined in perfctr 2.6.29 */
 		case PERFCTR_X86_AMD_FAM10:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "AMD64 (Barcelona)", 0 );
+		  _papi_load_preset_table( "AMD64 (Barcelona)", 0, cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_ATOM	/* family 6 model 28 */
 		case PERFCTR_X86_INTEL_ATOM:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Atom", 0 );
+		  _papi_load_preset_table( "Intel Atom", 0, cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_NHLM	/* family 6 model 26 */
 		case PERFCTR_X86_INTEL_NHLM:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Nehalem", 0 );
+		  _papi_load_preset_table( "Intel Nehalem", 0, cidx );
 			break;
 #endif
 #ifdef PERFCTR_X86_INTEL_WSTMR
 		case PERFCTR_X86_INTEL_WSTMR:
-			retval = _papi_pfm_init(  );
-			_papi_pfm_setup_presets( "Intel Westmere", 0 );
+		  _papi_load_preset_table( "Intel Westmere", 0, cidx );
 			break;
 #endif
 		default:
 			PAPIERROR( MODEL_ERROR );
-			return ( PAPI_ESBSTR );
+			return PAPI_ENOIMPL;
 		}
 		SUBDBG( "Number of native events: %d\n",
-				MY_VECTOR.cmp_info.num_native_events );
+				_perfctr_vector.cmp_info.num_native_events );
 	}
-	return ( retval );
+#endif
+   return retval;
 }
 
 static int
-_x86_init_control_state( hwd_control_state_t * ptr )
+_x86_init_control_state( hwd_control_state_t *ptr )
 {
 	int i, def_mode = 0;
 
-	if ( PENTIUM4 ) {
-		if ( MY_VECTOR.cmp_info.default_domain & PAPI_DOM_USER )
+	if ( is_pentium4() ) {
+		if ( _perfctr_vector.cmp_info.default_domain & PAPI_DOM_USER )
 			def_mode |= ESCR_T0_USR;
-		if ( MY_VECTOR.cmp_info.default_domain & PAPI_DOM_KERNEL )
+		if ( _perfctr_vector.cmp_info.default_domain & PAPI_DOM_KERNEL )
 			def_mode |= ESCR_T0_OS;
 
-		for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+		for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 			ptr->control.cpu_control.evntsel_aux[i] |= def_mode;
 		}
 		ptr->control.cpu_control.tsc_on = 1;
@@ -349,9 +331,9 @@ _x86_init_control_state( hwd_control_state_t * ptr )
 #endif
 	} else {
 
-		if ( MY_VECTOR.cmp_info.default_domain & PAPI_DOM_USER )
+		if ( _perfctr_vector.cmp_info.default_domain & PAPI_DOM_USER )
 			def_mode |= PERF_USR;
-		if ( MY_VECTOR.cmp_info.default_domain & PAPI_DOM_KERNEL )
+		if ( _perfctr_vector.cmp_info.default_domain & PAPI_DOM_KERNEL )
 			def_mode |= PERF_OS;
 
 		ptr->allocated_registers.selector = 0;
@@ -372,7 +354,7 @@ _x86_init_control_state( hwd_control_state_t * ptr )
 		case PERFCTR_X86_INTEL_PENTM:
 #endif
 			ptr->control.cpu_control.evntsel[0] |= PERF_ENABLE;
-			for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+			for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 				ptr->control.cpu_control.evntsel[i] |= def_mode;
 				ptr->control.cpu_control.pmc_map[i] = ( unsigned int ) i;
 			}
@@ -399,7 +381,7 @@ _x86_init_control_state( hwd_control_state_t * ptr )
 		case PERFCTR_X86_AMD_FAM10H:
 #endif
 		case PERFCTR_X86_AMD_K7:
-			for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+			for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 				ptr->control.cpu_control.evntsel[i] |= PERF_ENABLE | def_mode;
 				ptr->control.cpu_control.pmc_map[i] = ( unsigned int ) i;
 			}
@@ -420,26 +402,26 @@ int
 _x86_set_domain( hwd_control_state_t * cntrl, int domain )
 {
 	int i, did = 0;
-	int num_cntrs = MY_VECTOR.cmp_info.num_cntrs;
+	int num_cntrs = _perfctr_vector.cmp_info.num_cntrs;
 
 	/* Clear the current domain set for this event set */
 	/* We don't touch the Enable bit in this code */
-	if ( PENTIUM4 ) {
-		for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+	if ( is_pentium4() ) {
+		for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 			cntrl->control.cpu_control.evntsel_aux[i] &=
 				~( ESCR_T0_OS | ESCR_T0_USR );
 		}
 
 		if ( domain & PAPI_DOM_USER ) {
 			did = 1;
-			for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+			for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 				cntrl->control.cpu_control.evntsel_aux[i] |= ESCR_T0_USR;
 			}
 		}
 
 		if ( domain & PAPI_DOM_KERNEL ) {
 			did = 1;
-			for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+			for ( i = 0; i < _perfctr_vector.cmp_info.num_cntrs; i++ ) {
 				cntrl->control.cpu_control.evntsel_aux[i] |= ESCR_T0_OS;
 			}
 		}
@@ -473,7 +455,7 @@ _x86_set_domain( hwd_control_state_t * cntrl, int domain )
     if it can be mapped to counter ctr.
     Returns true if it can, false if it can't. */
 static int
-_x86_bpt_map_avail( hwd_reg_alloc_t * dst, int ctr )
+_bpt_map_avail( hwd_reg_alloc_t * dst, int ctr )
 {
 	return ( int ) ( dst->ra_selector & ( 1 << ctr ) );
 }
@@ -482,12 +464,12 @@ _x86_bpt_map_avail( hwd_reg_alloc_t * dst, int ctr )
     be mapped to only counter ctr.
     Returns nothing.  */
 static void
-_x86_bpt_map_set( hwd_reg_alloc_t * dst, int ctr )
+_bpt_map_set( hwd_reg_alloc_t * dst, int ctr )
 {
 	dst->ra_selector = ( unsigned int ) ( 1 << ctr );
 	dst->ra_rank = 1;
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 		/* Pentium 4 requires that both an escr and a counter are selected.
 		   Find which counter mask contains this counter.
 		   Set the opposite escr to empty (-1) */
@@ -502,7 +484,7 @@ _x86_bpt_map_set( hwd_reg_alloc_t * dst, int ctr )
    if it has a single exclusive mapping.
    Returns true if exlusive, false if non-exclusive.  */
 static int
-_x86_bpt_map_exclusive( hwd_reg_alloc_t * dst )
+_bpt_map_exclusive( hwd_reg_alloc_t * dst )
 {
 	return ( dst->ra_rank == 1 );
 }
@@ -512,9 +494,9 @@ _x86_bpt_map_exclusive( hwd_reg_alloc_t * dst )
     is exclusive, so this detects a conflict if true.
     Returns true if conflict, false if no conflict.  */
 static int
-_x86_bpt_map_shared( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
+_bpt_map_shared( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
 {
-	if ( PENTIUM4 ) {
+  if ( is_pentium4() ) {
 		int retval1, retval2;
 		/* Pentium 4 needs to check for conflict of both counters and esc registers */
 		/* selectors must share bits */
@@ -535,8 +517,9 @@ _x86_bpt_map_shared( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
 				  src->ra_bits.pebs_matrix_vert ) &&
 				( dst->ra_bits.pebs_matrix_vert !=
 				  src->ra_bits.pebs_matrix_vert ) ) );
-		if ( retval2 )
+		if ( retval2 ) {
 			SUBDBG( "pebs conflict!\n" );
+		}
 		return ( retval1 | retval2 );
 	}
 
@@ -549,12 +532,12 @@ _x86_bpt_map_shared( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
     the src event will be exclusive, but the code shouldn't assume it.
     Returns nothing.  */
 static void
-_x86_bpt_map_preempt( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
+_bpt_map_preempt( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
 {
 	int i;
 	unsigned shared;
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 #ifdef DEBUG
 		SUBDBG( "src, dst\n" );
 		print_alloc( src );
@@ -612,11 +595,11 @@ _x86_bpt_map_preempt( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
 }
 
 static void
-_x86_bpt_map_update( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
+_bpt_map_update( hwd_reg_alloc_t * dst, hwd_reg_alloc_t * src )
 {
 	dst->ra_selector = src->ra_selector;
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 		dst->ra_escr[0] = src->ra_escr[0];
 		dst->ra_escr[1] = src->ra_escr[1];
 	}
@@ -634,15 +617,16 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 	   for counter allocation and optimization. */
 	natNum = ESI->NativeCount;
 
-	if ( PENTIUM4 )
+	if ( is_pentium4() ) {
 		SUBDBG( "native event count: %d\n", natNum );
+	}
 
 	for ( i = 0; i < natNum; i++ ) {
 		/* retrieve the mapping information about this native event */
-		_papi_pfm_ntv_code_to_bits( ( unsigned int ) ESI->NativeInfoArray[i].
+		_papi_libpfm_ntv_code_to_bits( ( unsigned int ) ESI->NativeInfoArray[i].
 							   ni_event, &event_list[i].ra_bits );
 
-		if ( PENTIUM4 ) {
+		if ( is_pentium4() ) {
 			/* combine counter bit masks for both esc registers into selector */
 			event_list[i].ra_selector =
 				event_list[i].ra_bits.counter[0] | event_list[i].ra_bits.
@@ -667,7 +651,7 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 			}
 		}
 
-		if ( PENTIUM4 ) {
+		if ( is_pentium4() ) {
 			event_list[i].ra_escr[0] = event_list[i].ra_bits.escr[0];
 			event_list[i].ra_escr[1] = event_list[i].ra_bits.escr[1];
 #ifdef DEBUG
@@ -676,7 +660,7 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 #endif
 		}
 	}
-	if ( _papi_hwi_bipartite_alloc( event_list, natNum, ESI->CmpIdx ) ) {	/* successfully mapped */
+	if ( _papi_bipartite_alloc( event_list, natNum, ESI->CmpIdx ) ) {	/* successfully mapped */
 		for ( i = 0; i < natNum; i++ ) {
 #ifdef PERFCTR_X86_INTEL_CORE2
 			if ( _papi_hwi_system_info.hw_info.model ==
@@ -684,7 +668,7 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 				event_list[i].ra_bits.selector = event_list[i].ra_selector;
 #endif
 #ifdef DEBUG
-			if ( PENTIUM4 ) {
+			if ( is_pentium4() ) {
 				SUBDBG( "i: %d\n", i );
 				print_alloc( &event_list[i] );
 			}
@@ -693,7 +677,7 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 			ptr = ESI->NativeInfoArray[i].ni_bits;
 			*ptr = event_list[i].ra_bits;
 
-			if ( PENTIUM4 ) {
+			if ( is_pentium4() ) {
 				/* The selector contains the counter bit position. Turn it into a number
 				   and store it in the first counter value, zeroing the second. */
 				ptr->counter[0] = ffs( event_list[i].ra_selector ) - 1;
@@ -703,9 +687,9 @@ _x86_allocate_registers( EventSetInfo_t * ESI )
 			/* Array order on perfctr is event ADD order, not counter #... */
 			ESI->NativeInfoArray[i].ni_position = i;
 		}
-		return 1;
+		return PAPI_OK;
 	} else
-		return 0;
+		return PAPI_ECNFLCT;
 }
 
 static void
@@ -720,7 +704,7 @@ clear_cs_events( hwd_control_state_t * this_state )
 	/* Remove all counter control command values from eventset. */
 	for ( i = 0; i < j; i++ ) {
 		SUBDBG( "Clearing pmc event entry %d\n", i );
-		if ( PENTIUM4 ) {
+		if ( is_pentium4() ) {
 			this_state->control.cpu_control.pmc_map[i] = 0;
 			this_state->control.cpu_control.evntsel[i] = 0;
 			this_state->control.cpu_control.evntsel_aux[i] =
@@ -735,7 +719,7 @@ clear_cs_events( hwd_control_state_t * this_state )
 		this_state->control.cpu_control.ireset[i] = 0;
 	}
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 		/* Clear pebs stuff */
 		this_state->control.cpu_control.p4.pebs_enable = 0;
 		this_state->control.cpu_control.p4.pebs_matrix_vert = 0;
@@ -746,7 +730,7 @@ clear_cs_events( hwd_control_state_t * this_state )
 	this_state->control.cpu_control.nrictrs = 0;
 
 #ifdef DEBUG
-	if ( PENTIUM4 )
+	if ( is_pentium4() )
 		print_control( &this_state->control.cpu_control );
 #endif
 }
@@ -761,13 +745,13 @@ _x86_update_control_state( hwd_control_state_t * this_state,
 {
 	( void ) ctx;			 /*unused */
 	unsigned int i, k, retval = PAPI_OK;
-	hwd_register_t *bits;
+	hwd_register_t *bits,*bits2;
 	struct perfctr_cpu_control *cpu_control = &this_state->control.cpu_control;
 
 	/* clear out the events from the control state */
 	clear_cs_events( this_state );
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 		/* fill the counters we're using */
 		for ( i = 0; i < ( unsigned int ) count; i++ ) {
 			/* dereference the mapping information about this native event */
@@ -826,8 +810,9 @@ _x86_update_control_state( hwd_control_state_t * this_state,
 		case PERFCTR_X86_INTEL_CORE2:
 			/* fill the counters we're using */
 			for ( i = 0; i < ( unsigned int ) count; i++ ) {
+			    bits2 = native[i].ni_bits;
 				for ( k = 0; k < MAX_COUNTERS; k++ )
-					if ( native[i].ni_bits->selector & ( 1 << k ) ) {
+				    if ( bits2->selector & ( 1 << k ) ) {
 						break;
 					}
 				if ( k > 1 )
@@ -838,7 +823,7 @@ _x86_update_control_state( hwd_control_state_t * this_state,
 
 				/* Add counter control command values to eventset */
 				this_state->control.cpu_control.evntsel[i] |=
-					native[i].ni_bits->counter_cmd;
+					bits2->counter_cmd;
 			}
 			break;
 #endif
@@ -846,8 +831,9 @@ _x86_update_control_state( hwd_control_state_t * this_state,
 			/* fill the counters we're using */
 			for ( i = 0; i < ( unsigned int ) count; i++ ) {
 				/* Add counter control command values to eventset */
+			     bits2 = native[i].ni_bits;
 				this_state->control.cpu_control.evntsel[i] |=
-					native[i].ni_bits->counter_cmd;
+					bits2->counter_cmd;
 			}
 		}
 		this_state->control.cpu_control.nractrs = ( unsigned int ) count;
@@ -909,7 +895,7 @@ _x86_read( hwd_context_t * ctx, hwd_control_state_t * spc, long long **dp,
 {
 	if ( flags & PAPI_PAUSED ) {
 		vperfctr_read_state( ctx->perfctr, &spc->state, NULL );
-		if ( !PENTIUM4 ) {
+		if ( !is_pentium4() ) {
 			unsigned int i = 0;
 			for ( i = 0;
 				  i <
@@ -932,7 +918,7 @@ _x86_read( hwd_context_t * ctx, hwd_control_state_t * spc, long long **dp,
 	{
 		if ( ISLEVEL( DEBUG_SUBSTRATE ) ) {
 			unsigned int i;
-			if ( PENTIUM4 ) {
+			if ( is_pentium4() ) {
 				for ( i = 0; i < spc->control.cpu_control.nractrs; i++ ) {
 					SUBDBG( "raw val hardware index %d is %lld\n", i,
 							( long long ) spc->state.pmc[i] );
@@ -995,7 +981,7 @@ swap_events( EventSetInfo_t * ESI, struct hwd_pmc_control *contr, int cntr1,
 	contr->cpu_control.evntsel[cntr1] = contr->cpu_control.evntsel[cntr2];
 	contr->cpu_control.evntsel[cntr2] = ui;
 
-	if ( PENTIUM4 ) {
+	if ( is_pentium4() ) {
 		ui = contr->cpu_control.evntsel_aux[cntr1];
 		contr->cpu_control.evntsel_aux[cntr1] =
 			contr->cpu_control.evntsel_aux[cntr2];
@@ -1008,19 +994,20 @@ swap_events( EventSetInfo_t * ESI, struct hwd_pmc_control *contr, int cntr1,
 }
 
 static int
-_x86_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
+_x86_set_overflow( EventSetInfo_t *ESI, int EventIndex, int threshold )
 {
-	struct hwd_pmc_control *contr = &ESI->ctl_state->control;
+       hwd_control_state_t *ctl = ( hwd_control_state_t * ) ( ESI->ctl_state );
+       struct hwd_pmc_control *contr = &(ctl->control);
 	int i, ncntrs, nricntrs = 0, nracntrs = 0, retval = 0;
 	OVFDBG( "EventIndex=%d\n", EventIndex );
 
 #ifdef DEBUG
-	if ( PENTIUM4 )
-		print_control( &ESI->ctl_state->control.cpu_control );
+	if ( is_pentium4() )
+	  print_control( &(contr->cpu_control) );
 #endif
 
 	/* The correct event to overflow is EventIndex */
-	ncntrs = MY_VECTOR.cmp_info.num_cntrs;
+	ncntrs = _perfctr_vector.cmp_info.num_cntrs;
 	i = ESI->EventInfoArray[EventIndex].pos[0];
 
 	if ( i >= ncntrs ) {
@@ -1029,9 +1016,9 @@ _x86_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 	}
 
 	if ( threshold != 0 ) {	 /* Set an overflow threshold */
-		retval = _papi_hwi_start_signal( MY_VECTOR.cmp_info.hardware_intr_sig,
+		retval = _papi_hwi_start_signal( _perfctr_vector.cmp_info.hardware_intr_sig,
 										 NEED_CONTEXT,
-										 MY_VECTOR.cmp_info.CmpIdx );
+										 _perfctr_vector.cmp_info.CmpIdx );
 		if ( retval != PAPI_OK )
 			return ( retval );
 
@@ -1039,7 +1026,7 @@ _x86_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 		   thus we subtract 1 from the threshold. */
 		contr->cpu_control.ireset[i] = ( -threshold + 1 );
 
-		if ( PENTIUM4 )
+		if ( is_pentium4() )
 			contr->cpu_control.evntsel[i] |= CCCR_OVF_PMI_T0;
 		else
 			contr->cpu_control.evntsel[i] |= PERF_INT_ENABLE;
@@ -1048,19 +1035,19 @@ _x86_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 		contr->cpu_control.nractrs--;
 		nricntrs = ( int ) contr->cpu_control.nrictrs;
 		nracntrs = ( int ) contr->cpu_control.nractrs;
-		contr->si_signo = MY_VECTOR.cmp_info.hardware_intr_sig;
+		contr->si_signo = _perfctr_vector.cmp_info.hardware_intr_sig;
 
 		/* move this event to the bottom part of the list if needed */
 		if ( i < nracntrs )
 			swap_events( ESI, contr, i, nracntrs );
 		OVFDBG( "Modified event set\n" );
 	} else {
-		if ( PENTIUM4 && contr->cpu_control.evntsel[i] & CCCR_OVF_PMI_T0 ) {
+	  if ( is_pentium4() && contr->cpu_control.evntsel[i] & CCCR_OVF_PMI_T0 ) {
 			contr->cpu_control.ireset[i] = 0;
 			contr->cpu_control.evntsel[i] &= ( ~CCCR_OVF_PMI_T0 );
 			contr->cpu_control.nrictrs--;
 			contr->cpu_control.nractrs++;
-		} else if ( !PENTIUM4 &&
+	  } else if ( !is_pentium4() &&
 					contr->cpu_control.evntsel[i] & PERF_INT_ENABLE ) {
 			contr->cpu_control.ireset[i] = 0;
 			contr->cpu_control.evntsel[i] &= ( ~PERF_INT_ENABLE );
@@ -1080,12 +1067,12 @@ _x86_set_overflow( EventSetInfo_t * ESI, int EventIndex, int threshold )
 
 		OVFDBG( "Modified event set\n" );
 
-		retval = _papi_hwi_stop_signal( MY_VECTOR.cmp_info.hardware_intr_sig );
+		retval = _papi_hwi_stop_signal( _perfctr_vector.cmp_info.hardware_intr_sig );
 	}
 
 #ifdef DEBUG
-	if ( PENTIUM4 )
-		print_control( &ESI->ctl_state->control.cpu_control );
+	if ( is_pentium4() )
+	  print_control( &(contr->cpu_control) );
 #endif
 	OVFDBG( "End of call. Exit code: %d\n", retval );
 	return ( retval );
@@ -1099,17 +1086,281 @@ _x86_stop_profiling( ThreadInfo_t * master, EventSetInfo_t * ESI )
 	return ( PAPI_OK );
 }
 
-papi_vector_t _x86_vector = {
+
+
+/* these define cccr and escr register bits, and the p4 event structure */
+#include "perfmon/pfmlib_pentium4.h"
+#include "../lib/pfmlib_pentium4_priv.h"
+
+#define P4_REPLAY_REAL_MASK 0x00000003
+
+extern pentium4_escr_reg_t pentium4_escrs[];
+extern pentium4_cccr_reg_t pentium4_cccrs[];
+extern pentium4_event_t pentium4_events[];
+
+
+static pentium4_replay_regs_t p4_replay_regs[] = {
+	/* 0 */ {.enb = 0,
+			 /* dummy */
+			 .mat_vert = 0,
+			 },
+	/* 1 */ {.enb = 0,
+			 /* dummy */
+			 .mat_vert = 0,
+			 },
+	/* 2 */ {.enb = 0x01000001,
+			 /* 1stL_cache_load_miss_retired */
+			 .mat_vert = 0x00000001,
+			 },
+	/* 3 */ {.enb = 0x01000002,
+			 /* 2ndL_cache_load_miss_retired */
+			 .mat_vert = 0x00000001,
+			 },
+	/* 4 */ {.enb = 0x01000004,
+			 /* DTLB_load_miss_retired */
+			 .mat_vert = 0x00000001,
+			 },
+	/* 5 */ {.enb = 0x01000004,
+			 /* DTLB_store_miss_retired */
+			 .mat_vert = 0x00000002,
+			 },
+	/* 6 */ {.enb = 0x01000004,
+			 /* DTLB_all_miss_retired */
+			 .mat_vert = 0x00000003,
+			 },
+	/* 7 */ {.enb = 0x01018001,
+			 /* Tagged_mispred_branch */
+			 .mat_vert = 0x00000010,
+			 },
+	/* 8 */ {.enb = 0x01000200,
+			 /* MOB_load_replay_retired */
+			 .mat_vert = 0x00000001,
+			 },
+	/* 9 */ {.enb = 0x01000400,
+			 /* split_load_retired */
+			 .mat_vert = 0x00000001,
+			 },
+	/* 10 */ {.enb = 0x01000400,
+			  /* split_store_retired */
+			  .mat_vert = 0x00000002,
+			  },
+};
+
+/* this maps the arbitrary pmd index in libpfm/pentium4_events.h to the intel documentation */
+static int pfm2intel[] =
+	{ 0, 1, 4, 5, 8, 9, 12, 13, 16, 2, 3, 6, 7, 10, 11, 14, 15, 17 };
+
+
+
+
+/* This call is broken. Selector can be much bigger than 32 bits. It should be a pfmlib_regmask_t - pjm */
+/* Also, libpfm assumes events can live on different counters with different codes. This call only returns
+    the first occurence found. */
+/* Right now its only called by ntv_code_to_bits in perfctr-p3, so we're ok. But for it to be
+    generally useful it should be fixed. - dkt */
+static int
+_pfm_get_counter_info( unsigned int event, unsigned int *selector, int *code )
+{
+	pfmlib_regmask_t cnt, impl;
+	unsigned int num;
+	unsigned int i, first = 1;
+	int ret;
+
+	if ( ( ret = pfm_get_event_counters( event, &cnt ) ) != PFMLIB_SUCCESS ) {
+		PAPIERROR( "pfm_get_event_counters(%d,%p): %s", event, &cnt,
+				   pfm_strerror( ret ) );
+		return PAPI_ESYS;
+	}
+	if ( ( ret = pfm_get_num_counters( &num ) ) != PFMLIB_SUCCESS ) {
+		PAPIERROR( "pfm_get_num_counters(%p): %s", num, pfm_strerror( ret ) );
+		return PAPI_ESYS;
+	}
+	if ( ( ret = pfm_get_impl_counters( &impl ) ) != PFMLIB_SUCCESS ) {
+		PAPIERROR( "pfm_get_impl_counters(%p): %s", &impl,
+				   pfm_strerror( ret ) );
+		return PAPI_ESYS;
+	}
+
+	*selector = 0;
+	for ( i = 0; num; i++ ) {
+		if ( pfm_regmask_isset( &impl, i ) )
+			num--;
+		if ( pfm_regmask_isset( &cnt, i ) ) {
+			if ( first ) {
+				if ( ( ret =
+					   pfm_get_event_code_counter( event, i,
+												   code ) ) !=
+					 PFMLIB_SUCCESS ) {
+					PAPIERROR( "pfm_get_event_code_counter(%d, %d, %p): %s",
+						   event, i, code, pfm_strerror( ret ) );
+					return PAPI_ESYS;
+				}
+				first = 0;
+			}
+			*selector |= 1 << i;
+		}
+	}
+	return PAPI_OK;
+}
+
+int
+_papi_libpfm_ntv_code_to_bits_perfctr( unsigned int EventCode, 
+				       hwd_register_t *newbits )
+{
+    unsigned int event, umask;
+
+    X86_register_t *bits = (X86_register_t *)newbits;
+
+    if ( is_pentium4() ) {
+       pentium4_escr_value_t escr_value;
+       pentium4_cccr_value_t cccr_value;
+       unsigned int num_masks, replay_mask, unit_masks[12];
+       unsigned int event_mask;
+       unsigned int tag_value, tag_enable;
+       unsigned int i;
+       int j, escr, cccr, pmd;
+
+       if ( _pfm_decode_native_event( EventCode, &event, &umask ) != PAPI_OK )
+	  return PAPI_ENOEVNT;
+
+       /* for each allowed escr (1 or 2) find the allowed cccrs.
+	  for each allowed cccr find the pmd index
+	  convert to an intel counter number; or it into bits->counter */
+       for ( i = 0; i < MAX_ESCRS_PER_EVENT; i++ ) {
+	  bits->counter[i] = 0;
+	  escr = pentium4_events[event].allowed_escrs[i];
+	  if ( escr < 0 ) {
+	     continue;
+	  }
+
+	  bits->escr[i] = escr;
+
+	  for ( j = 0; j < MAX_CCCRS_PER_ESCR; j++ ) {
+	     cccr = pentium4_escrs[escr].allowed_cccrs[j];
+	     if ( cccr < 0 ) {
+		continue;
+	     }
+
+	     pmd = pentium4_cccrs[cccr].pmd;
+	     bits->counter[i] |= ( 1 << pfm2intel[pmd] );
+	  }
+       }
+
+       /* if there's only one valid escr, copy the values */
+       if ( escr < 0 ) {
+	  bits->escr[1] = bits->escr[0];
+	  bits->counter[1] = bits->counter[0];
+       }
+
+       /* Calculate the event-mask value. Invalid masks
+	* specified by the caller are ignored. */
+       tag_value = 0;
+       tag_enable = 0;
+       event_mask = _pfm_convert_umask( event, umask );
+
+       if ( event_mask & 0xF0000 ) {
+	  tag_enable = 1;
+	  tag_value = ( ( event_mask & 0xF0000 ) >> EVENT_MASK_BITS );
+       }
+
+       event_mask &= 0x0FFFF;	/* mask off possible tag bits */
+
+       /* Set up the ESCR and CCCR register values. */
+       escr_value.val = 0;
+       escr_value.bits.t1_usr = 0;	/* controlled by kernel */
+       escr_value.bits.t1_os = 0;	/* controlled by kernel */
+//    escr_value.bits.t0_usr       = (plm & PFM_PLM3) ? 1 : 0;
+//    escr_value.bits.t0_os        = (plm & PFM_PLM0) ? 1 : 0;
+       escr_value.bits.tag_enable = tag_enable;
+       escr_value.bits.tag_value = tag_value;
+       escr_value.bits.event_mask = event_mask;
+       escr_value.bits.event_select = pentium4_events[event].event_select;
+       escr_value.bits.reserved = 0;
+
+       /* initialize the proper bits in the cccr register */
+       cccr_value.val = 0;
+       cccr_value.bits.reserved1 = 0;
+       cccr_value.bits.enable = 1;
+       cccr_value.bits.escr_select = pentium4_events[event].escr_select;
+       cccr_value.bits.active_thread = 3;	
+       /* FIXME: This is set to count when either logical
+	*        CPU is active. Need a way to distinguish
+	*        between logical CPUs when HT is enabled.
+        *        the docs say these bits should always 
+	*        be set.                                  */
+       cccr_value.bits.compare = 0;	
+       /* FIXME: What do we do with "threshold" settings? */
+       cccr_value.bits.complement = 0;	
+       /* FIXME: What do we do with "threshold" settings? */
+       cccr_value.bits.threshold = 0;	
+       /* FIXME: What do we do with "threshold" settings? */
+       cccr_value.bits.force_ovf = 0;	
+       /* FIXME: Do we want to allow "forcing" overflow
+       	*        interrupts on all counter increments? */
+       cccr_value.bits.ovf_pmi_t0 = 0;
+       cccr_value.bits.ovf_pmi_t1 = 0;	
+       /* PMI taken care of by kernel typically */
+       cccr_value.bits.reserved2 = 0;
+       cccr_value.bits.cascade = 0;	
+       /* FIXME: How do we handle "cascading" counters? */
+       cccr_value.bits.overflow = 0;
+
+       /* these flags are always zero, from what I can tell... */
+       bits->pebs_enable = 0;	/* flag for PEBS counting */
+       bits->pebs_matrix_vert = 0;	
+       /* flag for PEBS_MATRIX_VERT, whatever that is */
+
+       /* ...unless the event is replay_event */
+       if ( !strcmp( pentium4_events[event].name, "replay_event" ) ) {
+	  escr_value.bits.event_mask = event_mask & P4_REPLAY_REAL_MASK;
+	  num_masks = prepare_umask( umask, unit_masks );
+	  for ( i = 0; i < num_masks; i++ ) {
+	     replay_mask = unit_masks[i];
+	     if ( replay_mask > 1 && replay_mask < 11 ) {
+	        /* process each valid mask we find */
+		bits->pebs_enable |= p4_replay_regs[replay_mask].enb;
+		bits->pebs_matrix_vert |= p4_replay_regs[replay_mask].mat_vert;
+	     }
+	  }
+       }
+
+       /* store the escr and cccr values */
+       bits->event = escr_value.val;
+       bits->cccr = cccr_value.val;
+       bits->ireset = 0;	 /* I don't really know what this does */
+       SUBDBG( "escr: 0x%lx; cccr:  0x%lx\n", escr_value.val, cccr_value.val );
+    } else {
+
+       int ret, code;
+
+       if ( _pfm_decode_native_event( EventCode, &event, &umask ) != PAPI_OK )
+	  return PAPI_ENOEVNT;
+
+       if ( ( ret = _pfm_get_counter_info( event, &bits->selector,
+						  &code ) ) != PAPI_OK )
+	  return ret;
+
+       bits->counter_cmd=(int) (code | ((_pfm_convert_umask(event,umask))<< 8) );
+
+       SUBDBG( "selector: 0x%x\n", bits->selector );
+       SUBDBG( "event: 0x%x; umask: 0x%x; code: 0x%x; cmd: 0x%x\n", event,
+	       umask, code, ( ( hwd_register_t * ) bits )->counter_cmd );
+    }
+
+    return PAPI_OK;
+}
+
+
+
+papi_vector_t _perfctr_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
+                                 .name = "perfctr",
+				 .description = "Linux perfctr CPU counters",
 				 .default_domain = PAPI_DOM_USER,
 				 .available_domains = PAPI_DOM_USER | PAPI_DOM_KERNEL,
 				 .default_granularity = PAPI_GRN_THR,
 				 .available_granularities = PAPI_GRN_THR,
-				 .itimer_sig = PAPI_INT_MPX_SIGNAL,
-				 .itimer_num = PAPI_INT_ITIMER,
-				 .itimer_res_ns = 1,
 				 .hardware_intr_sig = PAPI_INT_SIGNAL,
 
 				 /* component specific cmp_info initializations */
@@ -1131,46 +1382,30 @@ papi_vector_t _x86_vector = {
 	,
 
 	/* function pointers in this component */
-	.init_control_state = _x86_init_control_state,
-	.start = _x86_start,
-	.stop = _x86_stop,
-	.read = _x86_read,
-	.bpt_map_set = _x86_bpt_map_set,
-	.bpt_map_avail = _x86_bpt_map_avail,
-	.bpt_map_exclusive = _x86_bpt_map_exclusive,
-	.bpt_map_shared = _x86_bpt_map_shared,
-	.bpt_map_preempt = _x86_bpt_map_preempt,
-	.bpt_map_update = _x86_bpt_map_update,
-	.allocate_registers = _x86_allocate_registers,
+	.init_control_state =   _x86_init_control_state,
+	.start =                _x86_start,
+	.stop =                 _x86_stop,
+	.read =                 _x86_read,
+	.allocate_registers =   _x86_allocate_registers,
 	.update_control_state = _x86_update_control_state,
-	.set_domain = _x86_set_domain,
-	.reset = _x86_reset,
-	.set_overflow = _x86_set_overflow,
-	.stop_profiling = _x86_stop_profiling,
+	.set_domain =           _x86_set_domain,
+	.reset =                _x86_reset,
+	.set_overflow =         _x86_set_overflow,
+	.stop_profiling =       _x86_stop_profiling,
 
-	.init_substrate = _perfctr_init_substrate,
-	.ctl =            _perfctr_ctl,
-	.dispatch_timer = _perfctr_dispatch_timer,
-	.init =           _perfctr_init,
-	.shutdown =       _perfctr_shutdown,
+	.init_component =  _perfctr_init_component,
+	.ctl =             _perfctr_ctl,
+	.dispatch_timer =  _perfctr_dispatch_timer,
+	.init_thread =     _perfctr_init_thread,
+	.shutdown_thread = _perfctr_shutdown_thread,
 
-
-	/* from OS */
-	.update_shlib_info = _linux_update_shlib_info,
-	.get_dmem_info =     _linux_get_dmem_info,
-	.get_memory_info =   _linux_get_memory_info,
-	.get_system_info =   _linux_get_system_info,
-	.get_real_usec =     _linux_get_real_usec,
-	.get_real_cycles =   _linux_get_real_cycles,
-	.get_virt_cycles =   _linux_get_virt_cycles,
-	.get_virt_usec =     _linux_get_virt_usec,
-
-	/* from pfm */
-	.ntv_enum_events   = _papi_pfm_ntv_enum_events,
-	.ntv_name_to_code  = _papi_pfm_ntv_name_to_code,
-	.ntv_code_to_name  = _papi_pfm_ntv_code_to_name,
-	.ntv_code_to_descr = _papi_pfm_ntv_code_to_descr,
-	.ntv_code_to_bits  = _papi_pfm_ntv_code_to_bits,
-	.ntv_bits_to_info  = _papi_pfm_ntv_bits_to_info,
+	/* from libpfm */
+	.ntv_enum_events   = _papi_libpfm_ntv_enum_events,
+	.ntv_name_to_code  = _papi_libpfm_ntv_name_to_code,
+	.ntv_code_to_name  = _papi_libpfm_ntv_code_to_name,
+	.ntv_code_to_descr = _papi_libpfm_ntv_code_to_descr,
+	.ntv_code_to_bits  = _papi_libpfm_ntv_code_to_bits_perfctr,
 
 };
+
+

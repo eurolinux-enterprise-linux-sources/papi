@@ -1,11 +1,13 @@
 #!/bin/sh
 
 # File:    papi.c
-# CVS:     $Id: run_tests.sh,v 1.44 2011/04/18 15:38:58 ralph Exp $
+# CVS:     $Id$
 # Author:  Philip Mucci
 #          mucci@cs.utk.edu
 # Mods:    Kevin London
 #          london@cs.utk.edu
+#          Philip Mucci
+#          mucci@cs.utk.edu
 
 AIXTHREAD_SCOPE=S
 export AIXTHREAD_SCOPE
@@ -17,21 +19,18 @@ else
   export TESTS_QUIET
 fi
 
-chmod -x ctests/*.[ch]
-chmod -x ftests/*.[Fch]
-
-# Uncomment the following line to run tests using modified version of valgrind 
-# Requires this patch: http://people.redhat.com/wcohen/papi/valgrind-3.5.0-3.papi.src.rpm
-#VALGRIND="valgrind --leak-check=full";
-VALGRIND="";
+if [ "x$VALGRIND" != "x" ]; then
+  VALGRIND="valgrind --leak-check=full";
+fi
 
 #CTESTS=`find ctests -maxdepth 1 -perm -u+x -type f`;
-CTESTS=`find ctests/* -prune -perm -u+x -type f`;
-FTESTS=`find ftests -perm -u+x -type f`;
+CTESTS=`find ctests/* -prune -perm -u+x -type f ! -name "*.[c|h]"`;
+FTESTS=`find ftests -perm -u+x -type f ! -name "*.[c|h|F]"`;
+COMPTESTS=`find components/*/tests -perm -u+x -type f \( ! -name "*.[c|h]" -o -name "*.cu" \)`;
 #EXCLUDE=`grep --regexp=^# --invert-match run_tests_exclude.txt`
-EXCLUDE=`grep -v -e '^#' run_tests_exclude.txt`
+EXCLUDE=`grep -v -e '^#\|^$' run_tests_exclude.txt`
 
-ALLTESTS="$CTESTS $FTESTS";
+ALLTESTS="$CTESTS $FTESTS $COMPTESTS";
 x=0;
 CWD=`pwd`
 
@@ -40,6 +39,16 @@ export PATH
 
 echo "Platform:"
 uname -a
+
+echo "Date:"
+date
+
+echo ""
+if [ -r /proc/cpuinfo ]; then
+   echo "Cpuinfo:"
+   # only print info on first processor on x86
+   sed '/^$/q' /proc/cpuinfo
+fi
 
 echo ""
 if ["$VALGRIND" = ""]; then
@@ -73,8 +82,7 @@ echo ""
 
 CUDA=`find Makefile | xargs grep cuda`;
 if [ "$CUDA" != "" ]; then
-  echo "Exclude some fork/thread tests that won't run with CUDA (reason: cannot invoke same GPU from different threads)!";
-  EXCLUDE=`grep -v -e '^#' run_tests_exclude_cuda.txt`
+  EXCLUDE="$EXCLUDE `grep -v -e '^#\|^$' run_tests_exclude_cuda.txt`"
 fi
 
 echo ""
@@ -129,6 +137,32 @@ echo "Running Fortran Tests";
 echo ""
 
 for i in $FTESTS;
+do
+  for xtest in $EXCLUDE;
+  do
+    if [ "$i" = "$xtest" ]; then
+      MATCH=1
+      break
+    fi;
+  done
+  if [ `basename $i` = "Makefile" ]; then
+    MATCH=1
+  fi;
+  if [ $MATCH -ne 1 ]; then
+    if [ -x $i ]; then
+	RAN="$i $RAN"
+    printf "Running $i:";
+    $VALGRIND ./$i $TESTS_QUIET
+    fi;
+  fi;
+  MATCH=0
+done
+
+echo "";
+echo "Running Component Tests";
+echo ""
+
+for i in $COMPTESTS;
 do
   for xtest in $EXCLUDE;
   do

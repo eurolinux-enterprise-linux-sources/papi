@@ -1,8 +1,6 @@
 # File: ctests/Makefile
-# CVS:  $Id: Makefile,v 1.162 2011/04/13 05:15:44 mucci Exp $
-INCLUDE = -I.
-LIBRARY = -lpapi
-PAPILIB = $(LIBRARY)
+INCLUDE = -I.. -I. -I../testlib
+PAPILIB = ../libpapi.a
 CC	= gcc
 CC_R	= $(CC) -pthread
 CFLAGS	= -g -O -Wall
@@ -10,21 +8,29 @@ CFLAGS	= -g -O -Wall
 OMP	= zero_omp omptough
 SMP	= zero_smp
 SHMEM	= zero_shmem
-PTHREADS= pthrtough pthrtough2 thrspecific profile_pthreads overflow_pthreads zero_pthreads clockres_pthreads overflow3_pthreads locks_pthreads krentel_pthreads
-MPX	= multiplex1 multiplex2 mendes-alt sdsc-mpx sdsc2-mpx sdsc4-mpx
+PTHREADS= pthrtough pthrtough2 thrspecific profile_pthreads overflow_pthreads \
+	zero_pthreads clockres_pthreads overflow3_pthreads locks_pthreads \
+	krentel_pthreads
+MPX	= max_multiplex multiplex1 multiplex2 mendes-alt sdsc-mpx sdsc2-mpx \
+	sdsc4-mpx
 MPXPTHR	= multiplex1_pthreads multiplex3_pthreads kufrin
 MPI	= mpifirst
 SHARED  = shlib
-SERIAL  = inherit hwinfo code2name reset subinfo realtime virttime first exeinfo \
-	zero branches dmem_info all_native_events all_events derived high-level2 describe memory  \
+SERIAL  = inherit hwinfo code2name reset cmpinfo realtime virttime first \
+	exeinfo zero zero_named branches dmem_info all_native_events \
+	all_events derived high-level2 describe memory  \
 	zero_flip low-level high-level eventname case1 case2 \
-	calibrate flops second johnmay2 matrix-hl tenth ipc
-FORKEXEC  = fork fork2 exec exec2 forkexec forkexec2 forkexec3 forkexec4 fork_overflow exec_overflow \
-	child_overflow system_child_overflow system_overflow burn zero_fork
-OVERFLOW  = fork_overflow exec_overflow child_overflow system_child_overflow system_overflow burn \
-	overflow overflow_force_software overflow_single_event overflow_twoevents timer_overflow overflow2 \
+	calibrate flops second johnmay2 matrix-hl tenth ipc nmi_watchdog \
+	get_event_component disable_component remove_events cycle_ratio
+FORKEXEC  = fork fork2 exec exec2 forkexec forkexec2 forkexec3 forkexec4 \
+	fork_overflow exec_overflow child_overflow system_child_overflow \
+	system_overflow burn zero_fork
+OVERFLOW  = fork_overflow exec_overflow child_overflow system_child_overflow \
+	system_overflow burn overflow overflow_force_software \
+	overflow_single_event overflow_twoevents timer_overflow overflow2 \
 	overflow_index overflow_one_and_read overflow_allcounters
-PROFILE  = profile profile_force_software sprofile profile_twoevents byte_profile
+PROFILE  = profile profile_force_software sprofile profile_twoevents \
+	byte_profile
 ATTACH	= multiattach multiattach2 zero_attach attach3 attach2 attach_target
 P4_TEST	= p4_lst_ins
 ACPI	= acpi 
@@ -32,9 +38,10 @@ EAR	= earprofile
 RANGE	= data_range
 BROKEN	= pernode
 API = api
+PERF_EVENT = perf_event_uncore
 ALL	= $(PTHREADS) $(SERIAL) $(FORKEXEC) $(OVERFLOW) $(PROFILE) $(MPI) $(MPX) $(MPXPTHR) $(OMP) $(SMP) $(SHMEM)\
-	$(SHARED) $(EAR) $(RANGE) $(P4_TEST) $(ACPI) $(ATTACH) $(API)
-UTILOBJS= do_loops.o test_utils.o dummy.o
+	$(SHARED) $(EAR) $(RANGE) $(P4_TEST) $(ACPI) $(ATTACH) $(API) $(PERF_EVENT)
+UTILOBJS= ../testlib/do_loops.o ../testlib/test_utils.o ../testlib/dummy.o
 
 default all ctests ctest: $(CTEST_TARGETS)
 
@@ -74,6 +81,8 @@ profile_tests: $(PROFILE)
 
 papi_api: $(API)
 
+perf_event: $(PERF_EVENT)
+
 api: api.c $(UTILOBJS) $(PAPILIB) 
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) api.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o $@
 
@@ -112,6 +121,9 @@ timer_overflow: timer_overflow.c $(UTILOBJS) $(PAPILIB)
 
 mendes-alt: mendes-alt.c $(UTILOBJS) $(PAPILIB) 
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -DMULTIPLEX mendes-alt.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o $@ 
+
+max_multiplex: max_multiplex.c $(UTILOBJS) $(PAPILIB) 
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) max_multiplex.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o $@ 
 
 multiplex1: multiplex1.c $(UTILOBJS) $(PAPILIB) 
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) multiplex1.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o $@ 
@@ -170,8 +182,8 @@ omptough: omptough.c $(UTILOBJS) $(PAPILIB)
 val_omp: val_omp.c $(UTILOBJS) $(PAPILIB)
 	-$(CC_R) $(INCLUDE) $(OMPCFLGS) $(CFLAGS) $(TOPTFLAGS) val_omp.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o val_omp $(OMPLIBS)
 
-clockres_pthreads: clockcore.c clockres_pthreads.c $(UTILOBJS) $(PAPILIB) 
-	$(CC_R) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) clockcore.c clockres_pthreads.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o clockres_pthreads -lpthread -lm
+clockres_pthreads: clockres_pthreads.c $(UTILOBJS) $(PAPILIB)  ../testlib/clockcore.o
+	$(CC_R) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) clockres_pthreads.c $(UTILOBJS) ../testlib/clockcore.o $(PAPILIB) $(LDFLAGS) -o clockres_pthreads -lpthread -lm
 
 inherit: inherit.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) inherit.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o inherit
@@ -185,8 +197,23 @@ describe: describe.c $(UTILOBJS) $(PAPILIB)
 derived: derived.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) derived.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o derived
 
+perf_event_uncore:	perf_event_uncore.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) perf_event_uncore.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o perf_event_uncore
+
 zero: zero.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero
+
+zero_named: zero_named.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero_named.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero_named
+
+remove_events: remove_events.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) remove_events.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o remove_events
+
+nmi_watchdog: nmi_watchdog.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) nmi_watchdog.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o nmi_watchdog
+
+cycle_ratio: cycle_ratio.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) cycle_ratio.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o cycle_ratio
 
 zero_fork: zero_fork.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero_fork.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero_fork
@@ -278,6 +305,12 @@ all_events: all_events.c $(UTILOBJS) $(PAPILIB)
 all_native_events: all_native_events.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) all_native_events.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o all_native_events
 
+get_event_component: get_event_component.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) get_event_component.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o get_event_component
+
+disable_component: disable_component.c $(UTILOBJS) $(PAPILIB)
+	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) disable_component.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o disable_component
+
 memory: memory.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) memory.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o memory
 
@@ -311,8 +344,8 @@ shlib: shlib.c $(UTILOBJS) $(PAPILIB)
 exeinfo: exeinfo.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) exeinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o exeinfo 
 
-subinfo: subinfo.c $(UTILOBJS) $(PAPILIB)
-	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) subinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o subinfo 
+cmpinfo: cmpinfo.c $(UTILOBJS) $(PAPILIB)
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) cmpinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o cmpinfo 
 
 hwinfo: hwinfo.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) hwinfo.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o hwinfo
@@ -320,8 +353,8 @@ hwinfo: hwinfo.c $(UTILOBJS) $(PAPILIB)
 code2name: code2name.c $(UTILOBJS) $(PAPILIB)
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) code2name.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o code2name
 
-attach_target: do_loops.c
-	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -DDUMMY_DRIVER do_loops.c dummy.o -o attach_target 
+attach_target: ../testlib/do_loops.c
+	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -DDUMMY_DRIVER ../testlib/do_loops.c ../testlib/dummy.c -o attach_target 
 
 zero_attach: zero_attach.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) zero_attach.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o zero_attach 
@@ -383,17 +416,17 @@ forkexec3: forkexec3.c $(UTILOBJS) $(PAPILIB)
 forkexec4: forkexec4.c $(UTILOBJS) $(PAPILIB)
 	-$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) forkexec4.c $(UTILOBJS) $(PAPILIB) $(LDFLAGS) -o forkexec4 
 
-prof_utils.o: prof_utils.c papi_test.h prof_utils.h
+../testlib/test_utils.o:	../testlib/test_utils.c ../testlib/papi_test.h ../testlib/test_utils.h
+	cd ../testlib && $(MAKE)
+
+../testlib/do_loops.o:	../testlib/do_loops.c ../testlib/papi_test.h ../testlib/test_utils.h
+	cd ../testlib && $(MAKE)
+
+../testlib/dummy.o:	../testlib/dummy.c
+	cd ../testlib && $(MAKE)
+
+prof_utils.o: prof_utils.c ../testlib/papi_test.h prof_utils.h
 	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c prof_utils.c
-
-test_utils.o: test_utils.c papi_test.h test_utils.h
-	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c test_utils.c
-
-do_loops.o: do_loops.c papi_test.h test_utils.h
-	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c do_loops.c
-
-dummy.o: dummy.c
-	$(CC) $(INCLUDE) $(CFLAGS) $(TOPTFLAGS) -c dummy.c
 
 clean:
 	rm -f *.o *.stderr *.stdout core *~ $(ALL) unregister_pthreads

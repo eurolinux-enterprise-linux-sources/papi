@@ -1,4 +1,4 @@
-# $Id: Rules.coretemp_freebsd,v 1.1 2011/01/16 22:34:39 servat Exp $
+# $Id$
 
 COMPSRCS += components/coretemp_freebsd/coretemp_freebsd.c 
 COMPOBJS += coretemp_freebsd.o

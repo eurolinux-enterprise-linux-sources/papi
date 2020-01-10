@@ -7,17 +7,22 @@
 
 #include "papi_debug.h" /* SUBDBG */
 
-// Temporarily need this definition from .../asm/unistd.h in the PCL kernel
-#undef __NR_perf_event_open
+#include <asm/unistd.h>
+
+/* In case headers aren't new enough to have __NR_perf_event_open */
+#ifndef __NR_perf_event_open
+
 #ifdef __powerpc__
 #define __NR_perf_event_open	319
 #elif defined(__x86_64__)
 #define __NR_perf_event_open	298
 #elif defined(__i386__)
 #define __NR_perf_event_open	336
+#elif defined(__arm__)          366+0x900000
+#define __NR_perf_event_open    
 #endif
 
-extern int _papi_hwi_debug;
+#endif
 
 long
 sys_perf_event_open( struct perf_event_attr *hw_event, pid_t pid, int cpu,
@@ -28,10 +33,11 @@ sys_perf_event_open( struct perf_event_attr *hw_event, pid_t pid, int cpu,
    SUBDBG("sys_perf_event_open(%p,%d,%d,%d,%lx\n",hw_event,pid,cpu,group_fd,flags);
    SUBDBG("   type: %d\n",hw_event->type);
    SUBDBG("   size: %d\n",hw_event->size);
-   SUBDBG("   config: %llx\n",hw_event->config);
-   SUBDBG("   sample_period: %llx\n",hw_event->sample_period);
-   SUBDBG("   sample_type: %llx\n",hw_event->sample_type);
-   SUBDBG("   read_format: %llx\n",hw_event->read_format);
+   SUBDBG("   config: %"PRIx64" (%"PRIu64")\n",hw_event->config,
+	  hw_event->config);
+   SUBDBG("   sample_period: %"PRIu64"\n",hw_event->sample_period);
+   SUBDBG("   sample_type: %"PRIu64"\n",hw_event->sample_type);
+   SUBDBG("   read_format: %"PRIu64"\n",hw_event->read_format);
    SUBDBG("   disabled: %d\n",hw_event->disabled);
    SUBDBG("   inherit: %d\n",hw_event->inherit);
    SUBDBG("   pinned: %d\n",hw_event->pinned);
@@ -51,12 +57,8 @@ sys_perf_event_open( struct perf_event_attr *hw_event, pid_t pid, int cpu,
    
 	ret =
 		syscall( __NR_perf_event_open, hw_event, pid, cpu, group_fd, flags );
-#if defined(__x86_64__) || defined(__i386__)
-	if ( ret < 0 && ret > -4096 ) {
-		errno = -ret;
-		ret = -1;
-	}
-#endif
-	SUBDBG("Returned %d %d %s\n",ret,errno,strerror(errno));
+	SUBDBG("Returned %d %d %s\n",ret,
+	       ret<0?errno:0,
+	       ret<0?strerror(errno):" ");
 	return ret;
 }

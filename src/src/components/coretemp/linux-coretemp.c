@@ -3,6 +3,7 @@
 /* Headers required by PAPI */
 #include "papi.h"
 #include "papi_internal.h"
+#include "papi_vector.h"
 #include "papi_memory.h"
 
 #include "linux-coretemp.h"
@@ -11,265 +12,517 @@
  * but I have not explored this widely yet*/
 #define REFRESH_LAT 4000
 
+#define INVALID_RESULT -1000000L
+
+papi_vector_t _coretemp_vector;
+
 /* temporary event */
 struct temp_event {
   char name[PAPI_MAX_STR_LEN];
+  char units[PAPI_MIN_STR_LEN];
+  char description[PAPI_MAX_STR_LEN];
+  char location[PAPI_MAX_STR_LEN];
   char path[PATH_MAX];
   int stone;
   long count;
   struct temp_event *next;
 };
 
-static struct temp_event* root = (void*)PAPI_NULL;
-static CORETEMP_native_enent_entry_t * _coretemp_native_events;
-static int NUM_EVENTS		= 0;
+
+static CORETEMP_native_event_entry_t * _coretemp_native_events;
+static int num_events		= 0;
 static int is_initialized	= 0;
 
-/*******************************************************************************
- ********  BEGIN FUNCTIONS  USED INTERNALLY SPECIFIC TO THIS COMPONENT *********
- ******************************************************************************/
+/***************************************************************************/
+/******  BEGIN FUNCTIONS  USED INTERNALLY SPECIFIC TO THIS COMPONENT *******/
+/***************************************************************************/
+
+static struct temp_event* root = NULL;
+static struct temp_event *last = NULL;
+
+static int
+insert_in_list(char *name, char *units,
+	       char *description, char *filename) {
+
+
+    struct temp_event *temp;
+
+
+    /* new_event   path, events->d_name */
+    temp = (struct temp_event *) papi_calloc(sizeof(struct temp_event),1);
+    if (temp==NULL) {
+       PAPIERROR("out of memory!");
+       /* We should also free any previously allocated data */
+       return PAPI_ENOMEM;
+    }
+
+    temp->next = NULL;
+
+    if (root == NULL) {
+       root = temp;
+    }
+    else if (last) {
+       last->next = temp;
+    }
+    else {
+		   /* Because this is a function, it is possible */
+		   /* we are called with root!=NULL but no last  */
+		   /* so add this to keep coverity happy         */
+		   free(temp);
+		   PAPIERROR("This shouldn't be possible\n");
+
+		   return PAPI_ECMP;
+    }
+
+    last = temp;
+
+    snprintf(temp->name, PAPI_MAX_STR_LEN, "%s", name);
+    snprintf(temp->units, PAPI_MIN_STR_LEN, "%s", units);
+    snprintf(temp->description, PAPI_MAX_STR_LEN, "%s", description);
+    snprintf(temp->path, PATH_MAX, "%s", filename);
+
+    return PAPI_OK;
+}
 
 /*
  * find all coretemp information reported by the kernel
  */
-int generateEventList(char *base_dir)
+static int 
+generateEventList(char *base_dir)
 {
-  char path[PATH_MAX];
-  DIR *dir,*d;
-  int count = 0;
-  struct dirent *hwmonx,*events;
-  struct temp_event *temp;
-  struct temp_event *last;
+    char path[PATH_MAX],filename[PATH_MAX];
+    char modulename[PAPI_MIN_STR_LEN],
+         location[PAPI_MIN_STR_LEN],
+         units[PAPI_MIN_STR_LEN],
+         description[PAPI_MAX_STR_LEN],
+         name[PAPI_MAX_STR_LEN];
+    DIR *dir,*d;
+    FILE *fff;
+    int count = 0;
+    struct dirent *hwmonx;
+    int i,pathnum;
 
-  dir = opendir(base_dir);
-  if ( dir == (void*)PAPI_NULL ) {
-	PAPIERROR("Oops: I can't find %s, are you sure the coretemp module is loaded?\n", base_dir);
-	return( PAPI_ESYS );
-  }
-  while( (hwmonx = readdir(dir) ) ) {
-	if ( !strncmp("hwmon", hwmonx->d_name, 5) ) {
-	  snprintf(path, PATH_MAX, "%s/%s/device", base_dir, hwmonx->d_name);
+#define NUM_PATHS 2
+    char paths[NUM_PATHS][PATH_MAX]={
+      "device","."
+    };
 
-	  d = opendir(path);
-	  while( (events = readdir(d)) ) {
-		if ( events->d_name[0] == '.' )
-		  continue;
+    /* Open "/sys/class/hwmon" */
+    dir = opendir(base_dir);
+    if ( dir == NULL ) {
+       SUBDBG("Can't find %s, are you sure the coretemp module is loaded?\n", 
+	       base_dir);
+       return 0;
+    }
 
-		if ( !strncmp("temp", events->d_name, 4) ||
-			 !strncmp("fan", events->d_name, 3) ) {
-		  /* new_event   path, events->d_name */
-		  temp = (struct temp_event *)papi_malloc(sizeof(struct temp_event));
-		  if (!temp) 
-			PAPIERROR("out of memory!");
-		  
-		  temp->next = (void*)PAPI_NULL;
+    /* Iterate each /sys/class/hwmonX/device directory */
+    while( (hwmonx = readdir(dir) ) ) {
+       if ( !strncmp("hwmon", hwmonx->d_name, 5) ) {
 
-		  if (root == (void*)PAPI_NULL) 
-			root = temp;
-		  else
-			last->next = temp;
-		  last = temp;
+	 /* Found a hwmon directory */
 
-		  snprintf(temp->name, NAME_MAX, "%s.%s", hwmonx->d_name, events->d_name);
-		  snprintf(temp->path, PATH_MAX, "%s/%s", path, events->d_name);
+	 /* Sometimes the files are in ./, sometimes in device/ */
+	 for(pathnum=0;pathnum<NUM_PATHS;pathnum++) {
 
-		  /* don't optimize this yet....
-		  s = strchr(events->d_name, (int)'_');
-		  s++;
-		  if ( !strcmp("min", s) ||
-			   !strcmp("max", s) ) {
-			temp->stone = 1;
-			fp = fopen(temp->path,"r");
-			fgets(s,fp);
-		  }
-		  */
-		  count++;
-		}
+	    snprintf(path, PATH_MAX, "%s/%s/%s", 
+		     base_dir, hwmonx->d_name,paths[pathnum]);
+
+	    SUBDBG("Trying to open %s\n",path);
+	    d = opendir(path);
+	    if (d==NULL) {
+	       continue;
+	    }
+
+	    /* Get the name of the module */
+
+	    snprintf(filename, PAPI_MAX_STR_LEN, "%s/name",path);
+	    fff=fopen(filename,"r");
+	    if (fff==NULL) {
+	       snprintf(modulename, PAPI_MIN_STR_LEN, "Unknown");
+	    } else {
+	       if (fgets(modulename,PAPI_MIN_STR_LEN,fff)!=NULL) {
+	          modulename[strlen(modulename)-1]='\0';
+	       }
+	       fclose(fff);
+	    }
+
+	    SUBDBG("Found module %s\n",modulename);
+
+	  /******************************************************/
+	  /* Try handling all events starting with in (voltage) */
+	  /******************************************************/
+
+
+	    /* arbitrary maximum */
+	    /* the problem is the numbering can be sparse */
+	    /* should probably go back to dirent listing  */
+	    
+	  for(i=0;i<32;i++) {
+
+	     /* Try looking for a location label */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/in%d_label", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) {
+	        strncpy(location,"?",PAPI_MIN_STR_LEN);
+	     }
+	     else {
+	        if (fgets(location,PAPI_MIN_STR_LEN,fff)!=NULL) {
+	           location[strlen(location)-1]='\0';
+	        }
+	        fclose(fff);
+	     }
+
+	     /* Look for input temperature */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/in%d_input", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) continue;
+	     fclose(fff);
+
+	     snprintf(name, PAPI_MAX_STR_LEN, "%s:in%i_input", 
+			 hwmonx->d_name, i);
+	     snprintf(units, PAPI_MIN_STR_LEN, "V");
+	     snprintf(description, PAPI_MAX_STR_LEN, "%s, %s module, label %s",
+		      units,modulename,
+		      location);
+
+	     if (insert_in_list(name,units,description,filename)!=PAPI_OK) {
+	        goto done_error;
+	     }
+
+	     count++;
+
+	  }
+
+	  /************************************************************/
+	  /* Try handling all events starting with temp (temperature) */
+	  /************************************************************/
+
+	  for(i=0;i<32;i++) {
+
+	     /* Try looking for a location label */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/temp%d_label", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) {
+	        strncpy(location,"?",PAPI_MIN_STR_LEN);
+	     }
+	     else {
+	        if (fgets(location,PAPI_MIN_STR_LEN,fff)!=NULL) {
+	           location[strlen(location)-1]='\0';
+	        }
+	        fclose(fff);
+	     }
+
+	     /* Look for input temperature */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/temp%d_input", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) continue;
+	     fclose(fff);
+
+	     snprintf(name, PAPI_MAX_STR_LEN, "%s:temp%i_input", 
+			 hwmonx->d_name, i);
+	     snprintf(units, PAPI_MIN_STR_LEN, "degrees C");
+	     snprintf(description, PAPI_MAX_STR_LEN, "%s, %s module, label %s",
+		      units,modulename,
+		      location);
+
+	     if (insert_in_list(name,units,description,filename)!=PAPI_OK) {
+	        goto done_error;
+	     }
+
+	     count++;
+	  }
+
+	  /************************************************************/
+	  /* Try handling all events starting with fan (fan)          */
+	  /************************************************************/
+
+	  for(i=0;i<32;i++) {
+
+	     /* Try looking for a location label */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/fan%d_label", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) {
+	        strncpy(location,"?",PAPI_MIN_STR_LEN);
+	     }
+	     else {
+	        if (fgets(location,PAPI_MIN_STR_LEN,fff)!=NULL) {
+	           location[strlen(location)-1]='\0';
+	        }
+	        fclose(fff);
+	     }
+
+	     /* Look for input fan */
+	     snprintf(filename, PAPI_MAX_STR_LEN, "%s/fan%d_input", 
+		      path,i);
+	     fff=fopen(filename,"r");
+	     if (fff==NULL) continue;
+	     fclose(fff);
+
+	     snprintf(name, PAPI_MAX_STR_LEN, "%s:fan%i_input", 
+			 hwmonx->d_name, i);
+	     snprintf(units, PAPI_MIN_STR_LEN, "RPM");
+	     snprintf(description, PAPI_MAX_STR_LEN, "%s, %s module, label %s",
+		      units,modulename,
+		      location);
+
+	     if (insert_in_list(name,units,description,filename)!=PAPI_OK) {
+	        goto done_error;
+	     }
+
+	     count++;
+
 	  }
 	  closedir(d);
-	}
-  }
+	 }
+       }
+    }
 
-  closedir(dir);
-  return (count);
+    closedir(dir);
+    return count;
+
+done_error:
+    closedir(d);
+    closedir(dir);
+    return PAPI_ECMP;
 }
+
+static long long
+getEventValue( int index ) 
+{
+    char buf[PAPI_MAX_STR_LEN];
+    FILE* fp;
+    long result;
+
+    if (_coretemp_native_events[index].stone) {
+       return _coretemp_native_events[index].value;
+    }
+
+    fp = fopen(_coretemp_native_events[index].path, "r");
+    if (fp==NULL) {
+       return INVALID_RESULT;
+    }
+
+    if (fgets(buf, PAPI_MAX_STR_LEN, fp)==NULL) {
+        result=INVALID_RESULT;
+    }
+    else {
+        result=strtoll(buf, NULL, 10);
+    }
+    fclose(fp);
+
+    return result;
+}
+
+/*****************************************************************************
+ *******************  BEGIN PAPI's COMPONENT REQUIRED FUNCTIONS  *************
+ *****************************************************************************/
 
 /*
  * This is called whenever a thread is initialized
  */
-int coretemp_init( hwd_context_t *ctx )
+int 
+_coretemp_init_thread( hwd_context_t *ctx )
 {
   ( void ) ctx;
-  return (PAPI_OK );
+  return PAPI_OK;
 }
+
+
 
 /* Initialize hardware counters, setup the function vector table
  * and get hardware information, this routine is called when the 
  * PAPI process is initialized (IE PAPI_library_init)
  */
-int coretemp_init_substrate( )
+int 
+_coretemp_init_component( int cidx )
 {
-  int i		= 0;
-  struct temp_event *t,*last;
+     int i = 0;
+     struct temp_event *t,*last;
 
-  if ( is_initialized )
+     if ( is_initialized )
 	return (PAPI_OK );
 
-  is_initialized = 1;
-  /* This is the prefered method, all coretemp sensors are symlinked here
-   * see $(kernel_src)/Documentation/hwmon/sysfs-interface */
-  NUM_EVENTS = generateEventList("/sys/class/hwmon");
+     is_initialized = 1;
 
-  if ( NUM_EVENTS < 0 ) 
-	return ( NUM_EVENTS );
+     /* This is the prefered method, all coretemp sensors are symlinked here
+      * see $(kernel_src)/Documentation/hwmon/sysfs-interface */
+  
+     num_events = generateEventList("/sys/class/hwmon");
 
-  t = root;
-  _coretemp_native_events = (CORETEMP_native_enent_entry_t*)
-	papi_malloc(sizeof(CORETEMP_native_enent_entry_t) * NUM_EVENTS);
+     if ( num_events < 0 ) {
+        strncpy(_coretemp_vector.cmp_info.disabled_reason,
+		"Cannot open /sys/class/hwmon",PAPI_MAX_STR_LEN);
+	return PAPI_ENOCMP;
+     }
 
-  do {
-	strncpy(_coretemp_native_events[i].name,t->name,NAME_MAX);
+     if ( num_events == 0 ) {
+        strncpy(_coretemp_vector.cmp_info.disabled_reason,
+		"No coretemp events found",PAPI_MAX_STR_LEN);
+	return PAPI_ENOCMP;
+     }
+
+     t = root;
+  
+     _coretemp_native_events = (CORETEMP_native_event_entry_t*)
+          papi_calloc(sizeof(CORETEMP_native_event_entry_t),num_events);
+
+     do {
+	strncpy(_coretemp_native_events[i].name,t->name,PAPI_MAX_STR_LEN);
 	strncpy(_coretemp_native_events[i].path,t->path,PATH_MAX);
+	strncpy(_coretemp_native_events[i].units,t->units,PAPI_MIN_STR_LEN);
+	strncpy(_coretemp_native_events[i].description,t->description,
+	        PAPI_MAX_STR_LEN);
 	_coretemp_native_events[i].stone = 0;
 	_coretemp_native_events[i].resources.selector = i + 1;
 	last	= t;
 	t		= t->next;
 	papi_free(last);
 	i++;
-  } while (t != (void*)PAPI_NULL);
-  root = (void*)PAPI_NULL;
-  return (PAPI_OK);
+     } while (t != NULL);
+     root = NULL;
+
+     /* Export the total number of events available */
+     _coretemp_vector.cmp_info.num_native_events = num_events;
+
+     /* Export the component id */
+     _coretemp_vector.cmp_info.CmpIdx = cidx;
+
+     return PAPI_OK;
 }
 
 
-long getEventValue( int index ) 
-{
-  char buf[PAPI_MAX_STR_LEN];
-  FILE* fp;
 
-  if (_coretemp_native_events[index].stone) {
-	return _coretemp_native_events[index].value;
-  }
-
-  fp = fopen(_coretemp_native_events[index].path, "r");
-  fgets(buf, PAPI_MAX_STR_LEN, fp);
-  fclose(fp);
-  return strtol(buf, NULL, 10);
-}
 
 /*
  * Control of counters (Reading/Writing/Starting/Stopping/Setup)
  * functions
  */
-int coretemp_init_control_state( hwd_control_state_t * ctl)
+int 
+_coretemp_init_control_state( hwd_control_state_t * ctl)
 {
-  int i;
+    int i;
 
-  for ( i=0; i < NUM_EVENTS; i++ )
-	( ( CORETEMP_control_state_t *) ctl )->counts[i] = getEventValue(i);
-  
-  ( ( CORETEMP_control_state_t *) ctl)->lastupdate = PAPI_get_real_usec();
+    CORETEMP_control_state_t *coretemp_ctl = (CORETEMP_control_state_t *) ctl;
 
-  return (PAPI_OK);
+    for ( i=0; i < num_events; i++ ) {
+	coretemp_ctl->counts[i] = getEventValue(i);
+    }
+
+    /* Set last access time for caching results */
+    coretemp_ctl->lastupdate = PAPI_get_real_usec();
+
+    return PAPI_OK;
 }
 
-int coretemp_start( hwd_context_t *ctx, hwd_control_state_t * ctl)
+int 
+_coretemp_start( hwd_context_t *ctx, hwd_control_state_t *ctl)
 {
   ( void ) ctx;
   ( void ) ctl;
 
-  return ( PAPI_OK );
+  return PAPI_OK;
 }
 
-int coretemp_read( hwd_context_t *ctx, hwd_control_state_t *ctl,
-	long long ** events, int flags)
+int 
+_coretemp_read( hwd_context_t *ctx, hwd_control_state_t *ctl,
+	        long long ** events, int flags)
 {
-  (void) flags;
-  (void) ctx;
+    (void) flags;
+    (void) ctx;
 
-  CORETEMP_control_state_t* control = (CORETEMP_control_state_t*) ctl;
-  long long now = PAPI_get_real_usec();
-  int i;
+    CORETEMP_control_state_t* control = (CORETEMP_control_state_t*) ctl;
+    long long now = PAPI_get_real_usec();
+    int i;
 
-  if ( now - control->lastupdate > REFRESH_LAT ) {
-	for ( i = 0; i < NUM_EVENTS; i++ ) {
-	  control->counts[i] = getEventValue( i );
+    /* Only read the values from the kernel if enough time has passed */
+    /* since the last read.  Otherwise return cached values.          */
+
+    if ( now - control->lastupdate > REFRESH_LAT ) {
+	for ( i = 0; i < num_events; i++ ) {
+	   control->counts[i] = getEventValue( i );
 	}
 	control->lastupdate = now;
-  }
-  *events = control->counts;
+    }
 
-  return ( PAPI_OK );
+    /* Pass back a pointer to our results */
+    *events = control->counts;
+
+    return PAPI_OK;
 }
 
-int coretemp_stop( hwd_context_t *ctx, hwd_control_state_t *ctl )
+int 
+_coretemp_stop( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
-  (void) ctx;
-  /* read values */
-  CORETEMP_control_state_t* control = (CORETEMP_control_state_t*) ctl;
-  int i;
+    (void) ctx;
+    /* read values */
+    CORETEMP_control_state_t* control = (CORETEMP_control_state_t*) ctl;
+    int i;
 
-  for ( i = 0; i < NUM_EVENTS; i++ ) {
+    for ( i = 0; i < num_events; i++ ) {
 	control->counts[i] = getEventValue( i );
-  }
+    }
 
-  return ( PAPI_OK );
+    return PAPI_OK;
 }
 
-
-/*****************************************************************************
- *******************  BEGIN PAPI's COMPONENT REQUIRED FUNCTIONS  *************
- *****************************************************************************/
-
-
-
-
+/* Shutdown a thread */
+int
+_coretemp_shutdown_thread( hwd_context_t * ctx )
+{
+  ( void ) ctx;
+  return PAPI_OK;
+}
 
 
 /*
- *
+ * Clean up what was setup in  coretemp_init_component().
  */
-int
-coretemp_shutdown( hwd_context_t * ctx )
+int 
+_coretemp_shutdown_component( ) 
 {
-    ( void ) ctx;
-
-	papi_free(_coretemp_native_events);
-
-	return ( PAPI_OK );
+    if ( is_initialized ) {
+       is_initialized = 0;
+       papi_free(_coretemp_native_events);
+       _coretemp_native_events = NULL;
+    }
+    return PAPI_OK;
 }
 
 
-/* This function sets various options in the substrate
+/* This function sets various options in the component
  * The valid codes being passed in are PAPI_SET_DEFDOM,
  * PAPI_SET_DOMAIN, PAPI_SETDEFGRN, PAPI_SET_GRANUL * and PAPI_SET_INHERIT
  */
 int
-coretemp_ctl( hwd_context_t * ctx, int code, _papi_int_option_t * option )
+_coretemp_ctl( hwd_context_t *ctx, int code, _papi_int_option_t *option )
 {
     ( void ) ctx;
-	( void ) code;
-	( void ) option;
-	return ( PAPI_OK );
+    ( void ) code;
+    ( void ) option;
+
+    return PAPI_OK;
 }
 
 
-
 int
-coretemp_update_control_state(	hwd_control_state_t * ptr,
-								NativeInfo_t * native, int count,
-								hwd_context_t * ctx )
+_coretemp_update_control_state(	hwd_control_state_t *ptr,
+				NativeInfo_t * native, int count,
+				hwd_context_t * ctx )
 {
-	int i, index;
+    int i, index;
     ( void ) ctx;
-	( void ) ptr;
+    ( void ) ptr;
 
-	for ( i = 0; i < count; i++ ) {
-		index =
-			native[i].ni_event & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-		native[i].ni_position = _coretemp_native_events[index].resources.selector - 1;
-	}
-	return ( PAPI_OK );
+    for ( i = 0; i < count; i++ ) {
+	index = native[i].ni_event;
+	native[i].ni_position = _coretemp_native_events[index].resources.selector - 1;
+    }
+    return PAPI_OK;
 }
 
 
@@ -284,33 +537,34 @@ coretemp_update_control_state(	hwd_control_state_t * ptr,
  * PAPI_DOM_ALL   is all of the domains
  */
 int
-coretemp_set_domain( hwd_control_state_t * cntrl, int domain )
+_coretemp_set_domain( hwd_control_state_t * cntl, int domain )
 {
-	int found = 0;
-    ( void ) cntrl;
+    int found = 0;
+    ( void ) cntl;
 	
-	if ( PAPI_DOM_USER & domain )
+    if ( PAPI_DOM_USER & domain )
+       found = 1;
+
+       if ( PAPI_DOM_KERNEL & domain )
 		found = 1;
 
-	if ( PAPI_DOM_KERNEL & domain )
+       if ( PAPI_DOM_OTHER & domain )
 		found = 1;
 
-	if ( PAPI_DOM_OTHER & domain )
-		found = 1;
+       if ( !found )
+		return PAPI_EINVAL;
 
-	if ( !found )
-		return ( PAPI_EINVAL );
-
-	return ( PAPI_OK );
+       return PAPI_OK;
 }
 
 
 int
-coretemp_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
+_coretemp_reset( hwd_context_t *ctx, hwd_control_state_t *ctl )
 {
     ( void ) ctx;
-	( void ) ctrl;
-	return ( PAPI_OK );
+    ( void ) ctl;
+	
+    return PAPI_OK;
 }
 
 
@@ -318,79 +572,90 @@ coretemp_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
  * Native Event functions
  */
 int
-coretemp_ntv_enum_events( unsigned int *EventCode, int modifier )
+_coretemp_ntv_enum_events( unsigned int *EventCode, int modifier )
 {
-	int cidx = PAPI_COMPONENT_INDEX( *EventCode );
 
-	switch ( modifier ) {
+     int index;
+
+     switch ( modifier ) {
+
 	case PAPI_ENUM_FIRST:
-		*EventCode = PAPI_NATIVE_MASK | PAPI_COMPONENT_MASK( cidx );
 
-		return ( PAPI_OK );
-		break;
+	   if (num_events==0) {
+	      return PAPI_ENOEVNT;
+	   }
+	   *EventCode = 0;
+
+	   return PAPI_OK;
+		
 
 	case PAPI_ENUM_EVENTS:
-	{
-		int index = *EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-		if ( index < NUM_EVENTS - 1 ) {
-			*EventCode = *EventCode + 1;
-			return ( PAPI_OK );
-		} else
-			return ( PAPI_ENOEVNT );
-
-		break;
-	}
-	default:
-		return ( PAPI_EINVAL );
-	}
-	return ( PAPI_EINVAL );
-}
-
-/*
- *
- */
-int
-coretemp_ntv_code_to_name( unsigned int EventCode, char *name, int len )
-{
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-	if ( index >= 0 && index < NUM_EVENTS ) {
-	  strncpy( name, _coretemp_native_events[index].name, len );
-	  return ( PAPI_OK );
-	}
-	return ( PAPI_ENOEVNT );
-}
-
-/*
- *
- */
-int
-coretemp_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
-{
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
-
-	if ( index >= 0 && index < NUM_EVENTS ) {
 	
-	  strncpy( name, _coretemp_native_events[index].description, len );
+	   index = *EventCode;
+
+	   if ( index < num_events - 1 ) {
+	      *EventCode = *EventCode + 1;
+	      return PAPI_OK;
+	   } else {
+	      return PAPI_ENOEVNT;
+	   }
+	   break;
+	
+	default:
+		return PAPI_EINVAL;
 	}
-	return ( PAPI_ENOEVNT );
+	return PAPI_EINVAL;
 }
 
 /*
  *
  */
 int
-coretemp_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
+_coretemp_ntv_code_to_name( unsigned int EventCode, char *name, int len )
 {
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+     int index = EventCode;
 
-	if ( 0 > index || NUM_EVENTS <= index )
-	  return ( PAPI_ENOEVNT );
-	memcpy( ( CORETEMP_register_t * ) bits,
-			&( _coretemp_native_events[index].resources ),
-			sizeof ( CORETEMP_register_t ) );
-	return ( PAPI_OK );
+     if ( index >= 0 && index < num_events ) {
+	strncpy( name, _coretemp_native_events[index].name, len );
+	return PAPI_OK;
+     }
+     return PAPI_ENOEVNT;
+}
+
+/*
+ *
+ */
+int
+_coretemp_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
+{
+     int index = EventCode;
+
+     if ( index >= 0 && index < num_events ) {
+	strncpy( name, _coretemp_native_events[index].description, len );
+	return PAPI_OK;
+     }
+     return PAPI_ENOEVNT;
+}
+
+int
+_coretemp_ntv_code_to_info(unsigned int EventCode, PAPI_event_info_t *info) 
+{
+
+  int index = EventCode;
+
+  if ( ( index < 0) || (index >= num_events )) return PAPI_ENOEVNT;
+
+  strncpy( info->symbol, _coretemp_native_events[index].name, 
+	   sizeof(info->symbol));
+
+  strncpy( info->long_descr, _coretemp_native_events[index].description, 
+	   sizeof(info->long_descr));
+
+  strncpy( info->units, _coretemp_native_events[index].units, 
+	   sizeof(info->units));
+
+
+  return PAPI_OK;
 }
 
 
@@ -401,10 +666,11 @@ coretemp_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
 papi_vector_t _coretemp_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
-				 .name =
-				 "$Id: linux-coretemp.c,v 1.2 2011/03/11 20:15:29 ralph Exp $",
-				 .version = "$Revision: 1.2 $",
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
+				 .name = "coretemp",
+				 .short_name = "coretemp",
+				 .description = "Linux hwmon temperature and other info",
+				 .version = "4.2.1",
+				 .num_mpx_cntrs = CORETEMP_MAX_COUNTERS,
 				 .num_cntrs = CORETEMP_MAX_COUNTERS,
 				 .default_domain = PAPI_DOM_USER,
 				 //.available_domains = PAPI_DOM_USER,
@@ -430,21 +696,22 @@ papi_vector_t _coretemp_vector = {
 			 }
 	,
 	/* function pointers in this component */
-	.init = coretemp_init,
-	.init_substrate = coretemp_init_substrate,
-	.init_control_state = coretemp_init_control_state,
-	.start = coretemp_start,
-	.stop = coretemp_stop,
-	.read = coretemp_read,
-	.shutdown = coretemp_shutdown,
-	.ctl = coretemp_ctl,
+	.init_thread =          _coretemp_init_thread,
+	.init_component =       _coretemp_init_component,
+	.init_control_state =   _coretemp_init_control_state,
+	.start =                _coretemp_start,
+	.stop =                 _coretemp_stop,
+	.read =                 _coretemp_read,
+	.shutdown_thread =      _coretemp_shutdown_thread,
+	.shutdown_component =   _coretemp_shutdown_component,
+	.ctl =                  _coretemp_ctl,
 
-	.update_control_state = coretemp_update_control_state,
-	.set_domain = coretemp_set_domain,
-	.reset = coretemp_reset,
+	.update_control_state = _coretemp_update_control_state,
+	.set_domain =           _coretemp_set_domain,
+	.reset =                _coretemp_reset,
 
-	.ntv_enum_events = coretemp_ntv_enum_events,
-	.ntv_code_to_name = coretemp_ntv_code_to_name,
-	.ntv_code_to_bits = coretemp_ntv_code_to_bits,
-	.ntv_bits_to_info = NULL,
+	.ntv_enum_events =      _coretemp_ntv_enum_events,
+	.ntv_code_to_name =     _coretemp_ntv_code_to_name,
+	.ntv_code_to_descr =    _coretemp_ntv_code_to_descr,
+	.ntv_code_to_info =     _coretemp_ntv_code_to_info,
 };

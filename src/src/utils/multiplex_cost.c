@@ -1,11 +1,11 @@
-/** @file multiplex.c
+/** file multiplex.c
   * @brief papi_multiplex_cost utility.
   *	@page papi_multiplex_cost
   * @section  NAME
   *		papi_multiplex_cost - computes execution time costs for basic PAPI operations on multiplexed EventSets. 
   *
   *	@section Synopsis
-  *		papi_cost [-m, --min <min>] [-x, --max <max>] [-k,-s]
+  *		papi_cost [-m, --min < min >] [-x, --max < max >] [-k,-s]
   *
   *	@section Description
   *		papi_multiplex_cost is a PAPI utility program that computes the 
@@ -17,8 +17,8 @@
   *
   *	@section Options
   *	<ul>
-  *		<li>-m <Min number of events to test>
-  *		<li>-x <Max number of events to test>
+  *		<li>-m < Min number of events to test >
+  *		<li>-x < Max number of events to test >
   *		<li> -k, Do not time kernel multiplexing 
   *		<li> -s, Do not ime software multiplexed EventSets 
   *		<li> -t THREASHOLD, Test with THRESHOLD iterations of counting loop. 
@@ -93,8 +93,7 @@ init_test(int SoftwareMPX, int KernelMPX, int* Events)
 {
   int i;
   int retval;
-  PAPI_option_t option;
-  const  PAPI_component_info_t *info;
+  PAPI_option_t option, itimer;
 
   if ( ( retval = PAPI_assign_eventset_component( SoftwareMPX, 0 ) ) != PAPI_OK )
 	test_fail( __FILE__, __LINE__, "PAPI_assign_eventset_component", retval);
@@ -105,12 +104,13 @@ init_test(int SoftwareMPX, int KernelMPX, int* Events)
   if ( ( retval = PAPI_set_multiplex( KernelMPX ) ) != PAPI_OK )
 	test_fail( __FILE__, __LINE__, "PAPI_set_multiplex", retval );
 
-  info = PAPI_get_component_info(0);
+  PAPI_get_opt(PAPI_DEF_ITIMER,&itimer);
+
   memset(&option,0x0,sizeof(option));
 
   option.multiplex.flags = PAPI_MULTIPLEX_FORCE_SW;
   option.multiplex.eventset = SoftwareMPX;
-  option.multiplex.ns = info->itimer_ns;
+  option.multiplex.ns = itimer.itimer.ns;
 
   PAPI_set_opt( PAPI_MULTIPLEX, &option );
 
@@ -151,7 +151,7 @@ usage(void)
 int
 main( int argc, char **argv )
 {
-  int retval;
+  int retval, retval_start, retval_stop;
   int KernelMPX = PAPI_NULL;
   int SoftwareMPX = PAPI_NULL;
   int *Events = NULL;
@@ -163,7 +163,7 @@ main( int argc, char **argv )
   long long *array = NULL;
   int event;
 
-  PAPI_option_t option;
+  PAPI_option_t option, itimer;
   const  PAPI_component_info_t *info;
 
   tests_quiet( argc, argv );
@@ -241,11 +241,13 @@ main( int argc, char **argv )
   if ( ( retval = PAPI_assign_eventset_component( SoftwareMPX, 0 ) ) != PAPI_OK )
 	test_fail( __FILE__, __LINE__, "PAPI_assign_eventset_component", retval);
 
+  PAPI_get_opt(PAPI_DEF_ITIMER,&itimer);
+
   memset(&option,0x0,sizeof(option));
 
   option.multiplex.flags = PAPI_MULTIPLEX_FORCE_SW;
   option.multiplex.eventset = SoftwareMPX;
-  option.multiplex.ns = info->itimer_ns;
+  option.multiplex.ns = itimer.itimer.ns;
 
   PAPI_set_opt( PAPI_MULTIPLEX, &option );
 
@@ -308,9 +310,11 @@ main( int argc, char **argv )
 	  /* KernelMPX Timing loop */
 	  for ( i = 0; i < num_iters; i++ ) {
 		totcyc = PAPI_get_real_cyc();
-		PAPI_start( KernelMPX );
-		PAPI_stop( KernelMPX, values ); 
+		retval_start=PAPI_start( KernelMPX );
+		retval_stop=PAPI_stop( KernelMPX, values ); 
 		array[i] = PAPI_get_real_cyc() - totcyc; 
+		if (retval_start || retval_stop)
+		   test_fail( __FILE__, __LINE__, "PAPI start/stop", retval_start );
 	  } /* End 1 timing run */
 
 	} else
@@ -331,9 +335,11 @@ main( int argc, char **argv )
 	  /* SoftwareMPX Timing Loop */
 	  for ( i = num_iters; i < 2*num_iters; i++ ) {
 		totcyc = PAPI_get_real_cyc();
-		PAPI_start( SoftwareMPX );
-		PAPI_stop( SoftwareMPX, values ); 
+		retval_start=PAPI_start( SoftwareMPX );
+		retval_stop=PAPI_stop( SoftwareMPX, values ); 
 		array[i] = PAPI_get_real_cyc() - totcyc; 
+		if (retval_start || retval_stop)
+		   test_fail( __FILE__, __LINE__, "PAPI start/stop", retval_start );
 	  } /* End 2 timing run */
 
 	} else 
@@ -368,7 +374,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 1 timing run */
 
-	  PAPI_stop( KernelMPX, values );
+	  retval_stop=PAPI_stop( KernelMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else
 	  memset(array, 0, sizeof(long long) * num_iters );
 
@@ -390,7 +398,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 2 timing run */
 
-	  PAPI_stop( SoftwareMPX, values );
+	  retval_stop=PAPI_stop( SoftwareMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else 
 	  memset(array+num_iters, 0, sizeof(long long) * num_iters );
 
@@ -429,7 +439,9 @@ main( int argc, char **argv )
 	  }
 	  array[0] -= totcyc;
 
-	  PAPI_stop( KernelMPX, values );
+	  retval_stop=PAPI_stop( KernelMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else
 	  memset(array, 0, sizeof(long long) * num_iters );
 
@@ -449,7 +461,9 @@ main( int argc, char **argv )
 		retval = PAPI_read_ts( SoftwareMPX, values, &array[i]); 
 	  } /* End 2 timing run */
 
-	  PAPI_stop( SoftwareMPX, values );
+	  retval_stop=PAPI_stop( SoftwareMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 
 	  /* post-process the timing array */
 	  for ( i = 2*num_iters - 1; i > num_iters; i-- ) {
@@ -490,7 +504,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 1 timing run */
 
-	  PAPI_stop( KernelMPX, values );
+	  retval_stop=PAPI_stop( KernelMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else
 	  memset(array, 0, sizeof(long long) * num_iters );
 
@@ -512,7 +528,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 2 timing run */
 
-	  PAPI_stop( SoftwareMPX, values );
+	  retval_stop=PAPI_stop( SoftwareMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else 
 	  memset(array+num_iters, 0, sizeof(long long) * num_iters );
 
@@ -545,7 +563,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 1 timing run */
 
-	  PAPI_stop( KernelMPX, values );
+	  retval_stop=PAPI_stop( KernelMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else
 	  memset(array, 0, sizeof(long long) * num_iters );
 
@@ -567,7 +587,9 @@ main( int argc, char **argv )
 		array[i] = PAPI_get_real_cyc() - totcyc; 
 	  } /* End 2 timing run */
 
-	  PAPI_stop( SoftwareMPX, values );
+	  retval_stop=PAPI_stop( SoftwareMPX, values );
+          if (retval_stop!=PAPI_OK)
+		   test_fail( __FILE__, __LINE__, "PAPI_stop", retval_stop );
 	} else 
 	  memset(array+num_iters, 0, sizeof(long long) * num_iters );
 

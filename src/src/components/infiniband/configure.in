@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
 # File: components/infiniband/configure.in
-# CVS: $Id: configure.in,v 1.1 2010/06/17 20:53:50 jagode Exp $
+# CVS: $Id$
 
 AC_INIT
 

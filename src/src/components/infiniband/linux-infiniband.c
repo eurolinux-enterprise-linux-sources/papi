@@ -4,17 +4,28 @@
 
 /** 
  * @file    linux-infiniband.c
- * CVS:     $Id: linux-infiniband.c,v 1.3 2010/06/18 16:06:37 ralph Exp $
  * @author  Heike Jagode (in collaboration with Michael Kluge, TU Dresden)
  *          jagode@eecs.utk.edu
- * Mods:	<your name here>
- *			<your email address>
- * @brief A component for Infiniband devices.
+ *
+ * @ingroup papi_components 		
+ * 
+ * InfiniBand component 
+ * 
+ * Tested version of OFED: 1.4
+ *
+ * @brief
+ *  This file has the source code for a component that enables PAPI-C to 
+ *  access hardware monitoring counters for InfiniBand devices through the  
+ *  OFED library. Since a new interface was introduced with OFED version 1.4 
+ *  (released Dec 2008), the current InfiniBand component does not support 
+ *  OFED versions < 1.4.
  */
 
 #include "papi.h"
 #include "papi_internal.h"
+#include "papi_vector.h"
 #include "papi_memory.h"
+
 #include "linux-infiniband.h"
 
 struct ibmad_port *srcport;
@@ -481,7 +492,7 @@ host_deleteStringList( string_list * to_delete )
  * This is called whenever a thread is initialized
  */
 int
-INFINIBAND_init( hwd_context_t * ctx )
+INFINIBAND_init_thread( hwd_context_t * ctx )
 {
 	string_list *counter_list = NULL;
 	int i;
@@ -518,7 +529,7 @@ INFINIBAND_init( hwd_context_t * ctx )
  * PAPI process is initialized (IE PAPI_library_init)
  */
 int
-INFINIBAND_init_substrate(  )
+INFINIBAND_init_component(  )
 {
 	int i;
 
@@ -609,7 +620,7 @@ INFINIBAND_read( hwd_context_t * ctx, hwd_control_state_t * ctrl,
  *
  */
 int
-INFINIBAND_shutdown( hwd_context_t * ctx )
+INFINIBAND_shutdown_thread( hwd_context_t * ctx )
 {
 	( void ) ctx;
 	host_finalize(  );
@@ -617,7 +628,8 @@ INFINIBAND_shutdown( hwd_context_t * ctx )
 }
 
 
-/* This function sets various options in the substrate
+
+/* This function sets various options in the component
  * The valid codes being passed in are PAPI_SET_DEFDOM,
  * PAPI_SET_DOMAIN, PAPI_SETDEFGRN, PAPI_SET_GRANUL * and PAPI_SET_INHERIT
  */
@@ -647,8 +659,7 @@ INFINIBAND_update_control_state( hwd_control_state_t * ptr,
 	int i, index;
 
 	for ( i = 0; i < count; i++ ) {
-		index =
-			native[i].ni_event & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+		index = native[i].ni_event;
 		native[i].ni_position = index;
 	}
 
@@ -705,16 +716,13 @@ INFINIBAND_reset( hwd_context_t * ctx, hwd_control_state_t * ctrl )
 int
 INFINIBAND_ntv_enum_events( unsigned int *EventCode, int modifier )
 {
-	int cidx = PAPI_COMPONENT_INDEX( *EventCode );
-
 	if ( modifier == PAPI_ENUM_FIRST ) {
-		/* assumes first native event is always 0x4000000 */
-		*EventCode = PAPI_NATIVE_MASK | PAPI_COMPONENT_MASK( cidx );
-		return ( PAPI_OK );
+		*EventCode = 0;
+		return PAPI_OK;
 	}
 
 	if ( modifier == PAPI_ENUM_EVENTS ) {
-		int index = *EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+		int index = *EventCode;
 
 		if ( infiniband_native_table[index + 1] ) {
 			*EventCode = *EventCode + 1;
@@ -732,11 +740,9 @@ INFINIBAND_ntv_enum_events( unsigned int *EventCode, int modifier )
 int
 INFINIBAND_ntv_code_to_name( unsigned int EventCode, char *name, int len )
 {
-	strncpy( name,
-			 infiniband_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-									 PAPI_COMPONENT_AND_MASK]->name, len );
+	strncpy( name, infiniband_native_table[EventCode]->name, len );
 
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 
@@ -746,12 +752,9 @@ INFINIBAND_ntv_code_to_name( unsigned int EventCode, char *name, int len )
 int
 INFINIBAND_ntv_code_to_descr( unsigned int EventCode, char *name, int len )
 {
-	strncpy( name,
-			 infiniband_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-									 PAPI_COMPONENT_AND_MASK]->description,
-			 len );
+	strncpy( name, infiniband_native_table[EventCode]->description, len );
 
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 
@@ -762,11 +765,10 @@ int
 INFINIBAND_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
 {
 	memcpy( ( INFINIBAND_register_t * ) bits,
-			infiniband_native_table[EventCode & PAPI_NATIVE_AND_MASK &
-									PAPI_COMPONENT_AND_MASK],
+			infiniband_native_table[EventCode],
 			sizeof ( INFINIBAND_register_t ) );
 
-	return ( PAPI_OK );
+	return PAPI_OK;
 }
 
 
@@ -776,10 +778,11 @@ INFINIBAND_ntv_code_to_bits( unsigned int EventCode, hwd_register_t * bits )
 papi_vector_t _infiniband_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
-				 .name =
-				 "$Id: linux-infiniband.c,v 1.3 2010/06/18 16:06:37 ralph Exp $",
-				 .version = "$Revision: 1.3 $",
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
+				 .name ="infiniband",
+				 .short_name="infiniband",
+				 .version = "4.2.1",
+				 .description = "Infiniband statistics",
+				 .num_mpx_cntrs = INFINIBAND_MAX_COUNTERS,
 				 .num_cntrs = INFINIBAND_MAX_COUNTERS,
 				 .default_domain = PAPI_DOM_USER,
 				 .available_domains = PAPI_DOM_USER,
@@ -805,13 +808,13 @@ papi_vector_t _infiniband_vector = {
 			 }
 	,
 	/* function pointers in this component */
-	.init = INFINIBAND_init,
-	.init_substrate = INFINIBAND_init_substrate,
+	.init_thread = INFINIBAND_init_thread,
+	.init_component = INFINIBAND_init_component,
 	.init_control_state = INFINIBAND_init_control_state,
 	.start = INFINIBAND_start,
 	.stop = INFINIBAND_stop,
 	.read = INFINIBAND_read,
-	.shutdown = INFINIBAND_shutdown,
+	.shutdown_thread = INFINIBAND_shutdown_thread,
 	.ctl = INFINIBAND_ctl,
 
 	.update_control_state = INFINIBAND_update_control_state,
@@ -822,5 +825,4 @@ papi_vector_t _infiniband_vector = {
 	.ntv_code_to_name = INFINIBAND_ntv_code_to_name,
 	.ntv_code_to_descr = INFINIBAND_ntv_code_to_descr,
 	.ntv_code_to_bits = INFINIBAND_ntv_code_to_bits,
-	.ntv_bits_to_info = NULL,
 };

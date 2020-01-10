@@ -1,6 +1,6 @@
 /* 
 * File:    prof_utils.c
-* CVS:     $Id: prof_utils.c,v 1.11 2010/02/22 18:36:03 jagode Exp $
+* CVS:     $Id$
 * Author:  Dan Terpstra
 *          terpstra@cs.utk.edu
 * Mods:    <your name here>
@@ -33,11 +33,10 @@ void *profbuf[5];
    - initing the PAPI library;
    - setting the debug level;
    - getting hardware and executable info.
-   It assumes that prginfo and hw_info are global to the parent routine.
+   It assumes that prginfo is global to the parent routine.
 */
 void
-prof_init( int argc, char **argv, const PAPI_hw_info_t ** hw_info,
-		   const PAPI_exe_info_t ** prginfo )
+prof_init( int argc, char **argv, const PAPI_exe_info_t ** prginfo )
 {
 	int retval;
 
@@ -47,10 +46,6 @@ prof_init( int argc, char **argv, const PAPI_hw_info_t ** hw_info,
 		   PAPI_library_init( PAPI_VER_CURRENT ) ) != PAPI_VER_CURRENT )
 		test_fail( __FILE__, __LINE__, "PAPI_library_init", retval );
 
-	*hw_info = PAPI_get_hardware_info(  );
-	if ( hw_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
-
 	if ( ( *prginfo = PAPI_get_executable_info(  ) ) == NULL )
 		test_fail( __FILE__, __LINE__, "PAPI_get_executable_info", 1 );
 }
@@ -58,10 +53,10 @@ prof_init( int argc, char **argv, const PAPI_hw_info_t ** hw_info,
 /* Many profiling tests count one of {FP_INS, FP_OPS, TOT_INS} and TOT_CYC.
    This function creates an event set containing the appropriate pair of events.
    It also initializes the global event_name string to the event selected.
-   Assumed globals: EventSet, PAPI_event, hw_info, event_name.
+   Assumed globals: EventSet, PAPI_event, event_name.
 */
 int
-prof_events( int num_tests, const PAPI_hw_info_t * hw_info )
+prof_events( int num_tests)
 {
 	int retval;
 	int num_events, mask;
@@ -70,7 +65,7 @@ prof_events( int num_tests, const PAPI_hw_info_t * hw_info )
 	   PAPI_TOT_INS, depends on the availability of the event on the
 	   platform */
 	EventSet =
-		add_two_nonderived_events( &num_events, &PAPI_event, hw_info, &mask );
+		add_two_nonderived_events( &num_events, &PAPI_event, &mask );
 
 	values = allocate_test_space( num_tests, num_events );
 
@@ -235,9 +230,11 @@ prof_out( caddr_t start, int n, int bucket, int num_buckets,
 				for ( j = 0, buf_16 = 0; j < n; j++ )
 					buf_16 |= ( buf16[j] )[i];
 				if ( buf_16 ) {
-					printf( "%-16p",
-							start +
-							( int ) ( ( ( long long ) i * scale ) >> 15 ) );
+/* On 32bit builds with gcc 4.3 gcc complained about casting caddr_t => long long
+ * Thus the unsigned long to long long cast */
+					printf( "0x%-16llx",
+						(long long) (unsigned long)start +
+						( ( ( long long ) i * scale ) >> 15 ) );
 					for ( j = 0, buf_16 = 0; j < n; j++ )
 						printf( "\t%d", ( buf16[j] )[i] );
 					printf( "\n" );
@@ -249,9 +246,9 @@ prof_out( caddr_t start, int n, int bucket, int num_buckets,
 				for ( j = 0, buf_32 = 0; j < n; j++ )
 					buf_32 |= ( buf32[j] )[i];
 				if ( buf_32 ) {
-					printf( "%-16p",
-							start +
-							( int ) ( ( ( long long ) i * scale ) >> 15 ) );
+					printf( "0x%-16llx",
+						(long long) (unsigned long)start +
+						( ( ( long long ) i * scale ) >> 15 ) );
 					for ( j = 0, buf_32 = 0; j < n; j++ )
 						printf( "\t%d", ( buf32[j] )[i] );
 					printf( "\n" );
@@ -263,9 +260,9 @@ prof_out( caddr_t start, int n, int bucket, int num_buckets,
 				for ( j = 0, buf_64 = 0; j < n; j++ )
 					buf_64 |= ( buf64[j] )[i];
 				if ( buf_64 ) {
-					printf( "%-16p",
-							start +
-							( int ) ( ( ( long long ) i * scale ) >> 15 ) );
+					printf( "0x%-16llx",
+						(long long) (unsigned long)start +
+					        ( ( ( long long ) i * scale ) >> 15 ) );
 					for ( j = 0, buf_64 = 0; j < n; j++ )
 						printf( "\t%lld", ( buf64[j] )[i] );
 					printf( "\n" );

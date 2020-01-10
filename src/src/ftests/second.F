@@ -8,8 +8,8 @@
       integer es1, es2, es3
       integer retval
 
-      Integer len_trim
-      External len_trim
+      Integer last_char
+      External last_char
       integer tests_quiet, get_quiet
       external get_quiet
 #if (defined(sgi) && defined(host_mips))
@@ -269,15 +269,15 @@
          end if            
       endif
 #else
-      min = values(5)*0.9
-      max = values(5)*1.1
+      min = INT(values(5)*0.9)
+      max = INT(values(5)*1.1)
       if ((values(1) .lt. min) .OR. (values(1) .gt. max)) then
          call ftest_fail(__FILE__, __LINE__,
      . 'PAPI_FP_INS', 1)
       end if            
 
-      min = values(2)*0.8
-      max = values(2)*1.2
+      min = INT(values(2)*0.8)
+      max = INT(values(2)*1.2)
       if (((values(4)+values(6)) .lt. min) .OR. 
      *    ((values(4)+values(6)) .gt. max)) then
          call ftest_fail(__FILE__, __LINE__,

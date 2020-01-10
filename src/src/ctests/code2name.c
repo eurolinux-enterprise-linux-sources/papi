@@ -5,9 +5,7 @@
 static void
 test_continue( char *call, int retval )
 {
-	char errstring[PAPI_MAX_STR_LEN];
-	PAPI_perror( retval, errstring, PAPI_MAX_STR_LEN );
-	printf( "Expected error in %s: %s\n", call, errstring );
+	printf( "Expected error in %s: %s\n", call, PAPI_strerror(retval) );
 }
 
 int
@@ -28,7 +26,7 @@ main( int argc, char **argv )
 	retval =
 		papi_print_header
 		( "Test case code2name.c: Check limits and indexing of event tables.\n",
-		  0, &hwinfo );
+		  &hwinfo );
 	if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
 
@@ -78,9 +76,13 @@ main( int argc, char **argv )
 	}
 
 	/* Find the last defined native event */
+
+	/* FIXME: hardcoded cmp 0 */
 	cmp_info = PAPI_get_component_info( 0 );
-	if ( cmp_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_component_info", PAPI_ESBSTR );
+	if ( cmp_info == NULL ) {
+	   test_fail( __FILE__, __LINE__, 
+                      "PAPI_get_component_info", PAPI_ECMP );
+	}
 
 	code = PAPI_NATIVE_MASK;
 	PAPI_enum_event( &code, PAPI_ENUM_FIRST );
@@ -101,14 +103,14 @@ main( int argc, char **argv )
 
 	/* Highly doubtful we have this many natives */
 	/* Turn on all bits *except* PRESET bit and COMPONENT bits */
-	code = PAPI_PRESET_AND_MASK & PAPI_COMPONENT_AND_MASK;
+	code = PAPI_PRESET_AND_MASK;
 	printf( "Looking for highest definable native event: 0x%x...\n", code );
 	retval = PAPI_event_code_to_name( code, event_name );
 	if ( retval != PAPI_OK )
 		test_continue( "PAPI_event_code_to_name", retval );
 	else
 		printf( "Found |%s|\n", event_name );
-	if ( ( retval == PAPI_ENOEVNT ) || ( retval == PAPI_OK ) )
+	if ( ( retval == PAPI_ENOCMP) || ( retval == PAPI_ENOEVNT ) || ( retval == PAPI_OK ) )
 		test_pass( __FILE__, 0, 0 );
 
 	test_fail( __FILE__, __LINE__, "PAPI_event_code_to_name", PAPI_EBUG );

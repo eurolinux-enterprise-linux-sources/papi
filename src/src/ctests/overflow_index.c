@@ -1,6 +1,6 @@
 /* 
 * File:    overflow_index.c
-* CVS:     $Id: overflow_index.c,v 1.11 2010/02/22 18:36:03 jagode Exp $
+* CVS:     $Id$
 * Author:  min@cs.utk.edu
 *          Min Zhou
 */
@@ -9,15 +9,9 @@
 
 #include "papi_test.h"
 
-#if defined(_WIN32)
-#define OVER_FMT	"handler(%d) Overflow at %p! vector=0x%llx\n"
-#define OUT_FMT		"%-12s : %16I64d%16I64d\n"
-#define INDEX_FMT   "Overflows vector 0x%llx: \n"
-#else
 #define OVER_FMT	"handler(%d) Overflow at %p! vector=0x%llx\n"
 #define OUT_FMT		"%-12s : %16lld%16lld\n"
 #define INDEX_FMT   "Overflows vector 0x%llx: \n"
-#endif
 
 typedef struct
 {
@@ -29,8 +23,6 @@ typedef struct
    counter overflows, both overflow */
 ocount_t overflow_counts[3] = { {0, 0}, {0, 0}, {0, 0} };
 int total_unknown = 0;
-
-static const PAPI_hw_info_t *hw_info = NULL;
 
 void
 handler( int EventSet, void *address, long long overflow_vector, void *context )
@@ -84,15 +76,11 @@ main( int argc, char **argv )
 	if ( retval != PAPI_VER_CURRENT )
 		test_fail( __FILE__, __LINE__, "PAPI_library_init", retval );
 
-	hw_info = PAPI_get_hardware_info(  );
-	if ( hw_info == NULL )
-		test_fail( __FILE__, __LINE__, "PAPI_get_hardware_info", 2 );
-
 	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
 	   PAPI_TOT_INS, depends on the availability of the event on the
 	   platform */
 	EventSet =
-		add_two_nonderived_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+		add_two_nonderived_events( &num_events1, &PAPI_event, &mask1 );
 
 	retval = PAPI_start( EventSet );
 	if ( retval != PAPI_OK )

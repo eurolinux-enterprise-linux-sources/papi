@@ -1,5 +1,5 @@
 /** @file cpus.h
- *  CVS: $Id: cpus.h,v 1.1 2010/08/04 20:51:46 vweaver1 Exp $
+ *  CVS: $Id$
  * Author:  Gary Mohr
  *          gary.mohr@bull.com
  *          - based on threads.h by unknown author -
@@ -7,10 +7,6 @@
 
 #ifndef PAPI_CPUS_H
 #define PAPI_CPUS_H
-
-#ifdef NO_CPU_COUNTERS
-#include "papi_lock.h"
-#endif
 
 #include <stdlib.h>
 #include <stdio.h>

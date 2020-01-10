@@ -1,9 +1,6 @@
 #include "fpapi_test.h"
 
       integer function get_quiet()
-#if _WIN32
-      use dflib
-#endif
       implicit integer (p)
       character*25 chbuf
       integer retval
@@ -31,14 +28,14 @@ C     And also to make the test code read cleaner
       end
 
 
-      integer function len_trim(string)
+      integer function last_char(string)
       implicit integer (p)
       character*(*) string
 
-      do len_trim=len(string),1,-1
-        if(string(len_trim:len_trim).NE.' ') return
+      do last_char=len(string),1,-1
+        if(string(last_char:last_char).NE.' ') return
       end do
-      len_trim=0
+      last_char=0
       end
 
       subroutine ftests_warning(line,msg)
@@ -86,17 +83,18 @@ C     And also to make the test code read cleaner
       implicit integer (p)
       character*(*) test_str
       character*(PAPI_MAX_STR_LEN) papi_errstr
-      integer papiretval,iret
-      integer len_trim
-      external len_trim
+      integer papiretval
+      integer last_char
+      external last_char
       integer quiet
       common quiet
 
       write(*,100) test_str,' SKIPPED'
       if (quiet .eq. 0) then
         if(papiretval.lt.0)then
-          call PAPIF_perror(papiretval,papi_errstr,iret)
-          write(*,*) 'PAPI error: ',papi_errstr(1:len_trim(papi_errstr))
+          call PAPIF_perror( )
+          write(*,*) 'PAPI error: ',
+     *       papi_errstr(1:last_char(papi_errstr))
         end if
       end if
       call pause()
@@ -109,12 +107,12 @@ C     And also to make the test code read cleaner
       character*(*) file
       integer line
       character*(*) callstr
-      integer retval,ilen,iret
+      integer retval,ilen
       character*(PAPI_MAX_STR_LEN) papi_errstr
-      integer len_trim
-      external len_trim
+      integer last_char
+      external last_char
 
-      if ( retval.eq.PAPI_ESBSTR .OR. retval.eq.PAPI_ENOEVNT
+      if ( retval.eq.PAPI_ECMP .OR. retval.eq.PAPI_ENOEVNT
      &    .OR. retval.eq.PAPI_ECNFLCT .OR. retval.eq.PAPI_EPERM ) then
         call ftest_skip(file, line, callstr, retval)
       end if
@@ -136,10 +134,10 @@ C     And also to make the test code read cleaner
       else if(retval.eq.0)then
         write(*,*) 'SGI requires root permissions for this test'
       else
-        call PAPIF_perror(retval,papi_errstr,iret)
-        ilen=len_trim(callstr)
+        call PAPIF_perror( )
+        ilen=last_char(callstr)
         write(*,'(T2,3a)') 'PAPI error in ', callstr(1:ilen), 
-     *       ': '// papi_errstr(1:len_trim(papi_errstr))
+     *       ': '// papi_errstr(1:last_char(papi_errstr))
       end if
       call pause()
       stop
@@ -151,13 +149,13 @@ C     And also to make the test code read cleaner
       character*(*) file
       integer line
       character*(*) callstr
-      integer retval,iret,ilen
+      integer retval,ilen
       integer quiet
       common quiet
 
       character*(PAPI_MAX_STR_LEN) papi_errstr
-      integer len_trim
-      external len_trim
+      integer last_char
+      external last_char
 
       write(*,100) file, ' SKIPPED'
       if (quiet .eq. 0) then
@@ -167,10 +165,10 @@ C     And also to make the test code read cleaner
         else if (retval.gt.0) then
           write(*,*) "Error calculating: ", callstr
         else
-          call PAPIF_perror(retval,papi_errstr,iret)
-          ilen=len_trim(callstr)
+          call PAPIF_perror( )
+          ilen=last_char(callstr)
           write(*,'(T2,3a)') 'Error in ', callstr(1:ilen),
-     *         ': ' // papi_errstr(1:len_trim(papi_errstr))
+     *         ': ' // papi_errstr(1:last_char(papi_errstr))
         end if
       end if
       call pause()
@@ -208,7 +206,7 @@ C       Is there a better way to write this?
         if (idx .NE. 1) then
 C         Eliminate the first + character
           str = str(2:LEN(str))
-C         Blank-fill the rest of the string so len_trim works correctly
+C         Blank-fill the rest of the string so last_char works correctly
           str(idx:) = ' '
         else
           print *, 'error in stringify_domain'
@@ -250,11 +248,6 @@ C     For every other platform it is a nop.
       integer quiet
       common quiet
 
-#ifdef _WIN32
-      if (quiet .eq. 0) then
-        call cpause()
-      end if
-#endif
       end
 
 C     Print the content of an event set
@@ -310,8 +303,8 @@ C     Get PAPI h/w info
       if ( mstring(1:nchr).EQ."POWER6") then
 C     Setting domain to user+kernel+supervisor is really only necessary when
 C     using PAPI multiplexing on POWER6/perfctr.  But since the Fortran API
-C     does not include access to substrate info, we'll just set the domain
-C     in this manner for all substrates on POWER6.
+C     does not include access to component info, we'll just set the domain
+C     in this manner for all components on POWER6.
       call PAPIf_set_domain(PAPI_DOM_ALL, retval)
       if ( retval.NE.PAPI_OK) then
         call ftest_fail(__FILE__, __LINE__,

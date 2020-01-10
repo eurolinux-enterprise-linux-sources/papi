@@ -1,106 +1,82 @@
-.\" $Id: PAPI_start.3,v 1.16 2004/10/04 03:21:11 jthomas Exp $
-.TH PAPI_start 3 "September, 2004" "PAPI Programmer's Reference" "PAPI"
-
+.TH "PAPI_start" 3 "Tue May 21 2013" "Version 5.1.1.0" "PAPI" \" -*- nroff -*-
+.ad l
+.nh
 .SH NAME
-PAPI_start \- start counting hardware events in an event set
-.LP
-PAPI_stop \- stop counting hardware events in an event set
+PAPI_start \- 
+.PP
+Start counting hardware events in an event set.  
 
 .SH SYNOPSIS
-.B C Interface
+.br
+.PP
+.SH "Detailed Description"
+.PP 
+\fBC Interface:\fP
+.RS 4
+#include <\fBpapi.h\fP> 
+.br
+ int PAPI_start( int  EventSet );
+.RE
+.PP
+\fBParameters:\fP
+.RS 4
+\fIEventSet\fP -- an integer handle for a PAPI event set as created by \fBPAPI_create_eventset\fP
+.RE
+.PP
+\fBReturn values:\fP
+.RS 4
+\fIPAPI_OK\fP 
+.br
+\fIPAPI_EINVAL\fP -- One or more of the arguments is invalid. 
+.br
+\fIPAPI_ESYS\fP -- A system or C library call failed inside PAPI, see the errno variable. 
+.br
+\fIPAPI_ENOEVST\fP -- The EventSet specified does not exist. 
+.br
+\fIPAPI_EISRUN\fP -- The EventSet is currently counting events. 
+.br
+\fIPAPI_ECNFLCT\fP -- The underlying counter hardware can not count this event and other events in the EventSet simultaneously. 
+.br
+\fIPAPI_ENOEVNT\fP -- The PAPI preset is not available on the underlying hardware.
+.RE
+.PP
+\fBPAPI_start\fP starts counting all of the hardware events contained in the previously defined EventSet. All counters are implicitly set to zero before counting. Assumes an initialized PAPI library and a properly added event set.
+.PP
+\fBExample:\fP
+.RS 4
+
+.PP
 .nf
-.B #include <papi.h>
-.BI "int\ PAPI_start(int " EventSet ");"
-.BI "int\ PAPI_stop(int " EventSet ", long_long *" values ");"
-.fi
-.B Fortran Interface
-.nf
-.B #include "fpapi.h"
-.BI PAPIF_start(C_INT\  EventSet,\  C_INT\  check )
-.BI PAPIF_stop(C_INT\  EventSet,\  C_LONG_LONG(*)\  values,\  C_INT\  check )
-.fi
-
-.SH DESCRIPTION
-.B PAPI_start
-starts counting all of the hardware events contained in the previously
-defined EventSet.
-All counters are implicitly set to zero before counting.
-.LP
-.B PAPI_stop
-halts the counting of a previously defined event set and the counter values
-contained in that EventSet are copied into the values array
-.LP
-These calls assume an initialized PAPI library and a properly
-added event set.
-
-.SH ARGUMENTS
-.I "EventSet"
---  an integer handle for a PAPI event set as created by
-.BR "PAPI_create_eventset" (3)
-.LP
-.I *values
--- an array to hold the counter values of the counting events
-
-.SH RETURN VALUES
-On success, this function returns
-.B "PAPI_OK."
- On error, a non-zero error code is returned.
-
-.SH ERRORS
-.TP
-.B "PAPI_EINVAL"
-One or more of the arguments is invalid.
-.TP
-.B "PAPI_ESYS"
-A system or C library call failed inside PAPI, see the 
-.I "errno"
-variable.
-.TP
-.B "PAPI_ENOEVST"
-The EventSet specified does not exist.
-.TP
-.B "PAPI_EISRUN"
-The EventSet is currently counting events.
-.BR ""  ( "PAPI_start() " only)
-.TP
-.B "PAPI_ENOTRUN"
-The EventSet is currently not running.
-.BR "" ( "PAPI_stop() " only)
-.TP
-.B "PAPI_ECNFLCT"
-The underlying counter hardware can not count this event and other events
-in the EventSet simultaneously.
-.BR "" ( "PAPI_start() " only)
-.TP
-.B "PAPI_ENOEVNT"
-The PAPI preset is not available on the underlying hardware. 
-
-.SH EXAMPLES
-.nf         
-.if t .ft CW
-  if (PAPI_create_eventset(&EventSet) != PAPI_OK)
-    handle_error(1);
-
-  /* Add Total Instructions Executed to our EventSet */
-  if (PAPI_add_event(EventSet, PAPI_TOT_INS) != PAPI_OK)
-    handle_error(1);
-
-  /* Start counting */
-  if (PAPI_start(EventSet) != PAPI_OK)
-    handle_error(1);
-
+  int EventSet = PAPI_NULL;
+  long long values[2];
+  int ret;
+  
+  ret = PAPI_create_eventset(&EventSet);
+  if (ret != PAPI_OK) handle_error(ret);
+  
+  // Add Total Instructions Executed to our EventSet
+  ret = PAPI_add_event(EventSet, PAPI_TOT_INS);
+  if (ret != PAPI_OK) handle_error(ret);
+  
+  // Start counting
+  ret = PAPI_start(EventSet);
+  if (ret != PAPI_OK) handle_error(ret);
   poorly_tuned_function();
+  ret = PAPI_stop(EventSet, values);
+  if (ret != PAPI_OK) handle_error(ret);
+  printf('%lld\\n',values[0]);
 
-  if (PAPI_stop(EventSet, values) != PAPI_OK)
-    handle_error(1);
+.fi
+.PP
+.RE
+.PP
+\fBSee also:\fP
+.RS 4
+\fBPAPI_create_eventset\fP \fBPAPI_add_event\fP \fBPAPI_stop\fP 
+.RE
+.PP
 
-  printf("%lld\\n",values[0]);
-.if t .ft P
-.fi         
 
-.SH BUGS
-These functions have no known bugs.
-
-.SH SEE ALSO
-.BR PAPI_create_eventset "(3), " PAPI_add_event "(3), " 
-.BR PAPI "(3), " PAPIF "(3)"
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for PAPI from the source code.

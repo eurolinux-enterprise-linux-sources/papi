@@ -1,6 +1,6 @@
 /* 
 * File:    profile.c
-* CVS:     $Id: profile.c,v 1.61 2010/08/24 21:38:59 vweaver1 Exp $
+* CVS:     $Id$
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    Dan Terpstra
@@ -28,6 +28,7 @@
    - Stop eventset 1
 */
 
+#include "papi_test.h"
 #include "prof_utils.h"
 #define PROFILE_ALL
 
@@ -42,12 +43,11 @@ main( int argc, char **argv )
 	int mask;
 	int retval;
 	int mythreshold = THRESHOLD;
-	const PAPI_hw_info_t *hw_info;
 	const PAPI_exe_info_t *prginfo;
 	caddr_t start, end;
 
-	prof_init( argc, argv, &hw_info, &prginfo );
-	mask = prof_events( num_tests, hw_info );
+	prof_init( argc, argv, &prginfo );
+	mask = prof_events( num_tests );
 
 #ifdef PROFILE_ALL
 /* use these lines to profile entire code address space */

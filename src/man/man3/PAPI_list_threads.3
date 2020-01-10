@@ -1,63 +1,56 @@
-.\" $Id: PAPI_list_threads.3,v 1.3 2006/11/17 00:39:17 terpstra Exp $
-.TH PAPI_list_threads 3 "October, 2006" "PAPI Programmer's Reference" "PAPI"
-
+.TH "PAPI_list_threads" 3 "Tue May 21 2013" "Version 5.1.1.0" "PAPI" \" -*- nroff -*-
+.ad l
+.nh
 .SH NAME
-PAPI_list_threads \- list the registered thread ids
+PAPI_list_threads \- 
+.PP
+List the registered thread ids.  
+
 .SH SYNOPSIS
-
-C Interface
-
-.nf
-.B #include <papi.h>
-.BI "int PAPI_list_threads(PAPI_thread_id_t *" id ", int *" number ");"
-.fi
-
-Fortran Interface
-
-.nf
-.B <none>
-.fi
-
-.SH DESCRIPTION
-.LP
-.B PAPI_list_threads(\|)
-returns to the caller a list of all thread ID's known to PAPI. 
-.LP
+.br
+.PP
+.SH "Detailed Description"
+.PP 
+PAPI_list_threads() returns to the caller a list of all thread IDs known to PAPI.
+.PP
 This call assumes an initialized PAPI library.
+.PP
+\fBC Interface\fP
+.RS 4
+#include <\fBpapi.h\fP> 
+.br
+ int PAPI_list_threads(PAPI_thread_id_t *tids, int * number );
+.RE
+.PP
+\fBParameters:\fP
+.RS 4
+\fI*tids\fP -- A pointer to a preallocated array. This may be NULL to only return a count of threads. No more than *number codes will be stored in the array. 
+.br
+\fI*number\fP -- An input and output parameter. Input specifies the number of allocated elements in *tids (if non-NULL) and output specifies the number of threads.
+.RE
+.PP
+\fBReturn values:\fP
+.RS 4
+\fIPAPI_OK\fP The call returned successfully. 
+.br
+\fIPAPI_EINVAL\fP *number has an improper value
+.RE
+.PP
+\fBSee also:\fP
+.RS 4
+\fBPAPI_get_thr_specific\fP 
+.PP
+\fBPAPI_set_thr_specific\fP 
+.PP
+\fBPAPI_register_thread\fP 
+.PP
+\fBPAPI_unregister_thread\fP 
+.PP
+\fBPAPI_thread_init\fP \fBPAPI_thread_id\fP 
+.RE
+.PP
 
-.SH ARGUMENTS
-.I *id 
--- A pointer to a preallocated array. This may be NULL 
-to only return a count of threads. No more than 
-.I *number
-codes will be stored in the array.
-.LP
-.I *number 
--- An input and output parameter, input specifies the number of allocated elements
-in 
-.I *id
-(if non-NULL) and output specifies the number of threads.
-.LP
 
-.SH RETURN VALUES
-.TP
-.B "PAPI_OK"
-The call returned successfully.
-.TP
-.B "PAPI_EINVAL"
-One or more of the arguments is invalid.
-
-.SH EXAMPLES
-.nf
-.if t .ft CW
-/* Reserved for example usage */
-.if t .ft P
-.fi
-
-.SH BUGS
-This function has no known bugs.
-
-.SH SEE ALSO
-.BR PAPI_thread_init "(3), " PAPI_thread_id "(3),"
-.BR PAPI_register_thread "(3), " PAPI_unregister_thread "(3),"
-.BR PAPI_get_thr_specific "(3), " PAPI_set_thr_specific "(3), " PAPI "(3)"
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for PAPI from the source code.

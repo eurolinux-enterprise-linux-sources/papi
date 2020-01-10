@@ -1,6 +1,6 @@
 /* 
 * File:    fork2.c
-* CVS:     $Id: fork2.c,v 1.4 2010/03/04 20:54:57 bsheely Exp $
+* CVS:     $Id$
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>

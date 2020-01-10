@@ -4,7 +4,7 @@
 
 /* 
 * File:    map-core2.h
-* CVS:     $Id: map-core2-extreme.h,v 1.4 2010/04/15 18:32:41 bsheely Exp $
+* CVS:     $Id$
 * Author:  George Neville-Neil
 *          gnn@freebsd.org
 */

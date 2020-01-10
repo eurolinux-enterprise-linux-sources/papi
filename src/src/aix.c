@@ -1,34 +1,24 @@
-/* This substrate should never malloc anything. All allocation should be
-   done by the high level API. */
-
 /* This file handles the OS dependent part of the POWER5 and POWER6 architectures.
   It supports both AIX 4 and AIX 5. The switch between AIX 4 and 5 is driven by the 
   system defined value _AIX_VERSION_510.
   Other routines also include minor conditionally compiled differences.
 */
 
+#include <sys/utsname.h>
+
 #include "papi.h"
 #include "papi_internal.h"
-#include "papi_defines.h"
-#include "papi_vector.h"
+#include "papi_lock.h"
+
 #include "papi_memory.h"
 
-extern int _aix_allocate_registers( EventSetInfo_t * ESI );
-extern int _aix_update_control_state( hwd_control_state_t * this_state,
-									  NativeInfo_t * native, int count,
-									  hwd_context_t * context );
-extern int _aix_ntv_bits_to_info( hwd_register_t * bits, char *names,
-								  unsigned int *values, int name_len,
-								  int count );
-extern int _aix_get_memory_info( PAPI_hw_info_t * mem_info, int type );
-extern int _aix_get_dmem_info( PAPI_dmem_info_t * d );
+#include "extras.h"
 
-/* Machine dependent info structure */
-extern papi_mdi_t _papi_hwi_system_info;
-extern pm_groups_info_t pmgroups;
+#include "aix.h"
+#include "papi_vector.h"
 
-/* define the vector structure at the bottom of this file */
-extern papi_vector_t MY_VECTOR;
+/* Advance declarations */
+papi_vector_t _aix_vector;
 
 /* Locking variables */
 volatile int lock_var[PAPI_MAX_LOCK] = { 0 };
@@ -47,6 +37,248 @@ atomic_p lock[PAPI_MAX_LOCK];
 
 static int maxgroups = 0;
 struct utsname AixVer;
+
+native_event_entry_t native_table[PAPI_MAX_NATIVE_EVENTS];
+
+hwd_pminfo_t pminfo;
+pm_groups_info_t pmgroups;
+native_event_entry_t native_table[PAPI_MAX_NATIVE_EVENTS];
+PPC64_native_map_t native_name_map[PAPI_MAX_NATIVE_EVENTS];
+hwd_groups_t group_map[MAX_GROUPS] = { 0 };
+
+/* to initialize the native_table */
+void
+aix_initialize_native_table(  )
+{
+	int i, j;
+
+	memset( native_table, 0,
+			PAPI_MAX_NATIVE_EVENTS * sizeof ( native_event_entry_t ) );
+	memset( native_name_map, 0,
+			PAPI_MAX_NATIVE_EVENTS * sizeof ( PPC64_native_map_t ) );
+	for ( i = 0; i < PAPI_MAX_NATIVE_EVENTS; i++ ) {
+		native_name_map[i].index = -1;
+		for ( j = 0; j < MAX_COUNTERS; j++ )
+			native_table[i].resources.counter_cmd[j] = -1;
+	}
+}
+
+/* to setup native_table group value */
+static void
+aix_ppc64_setup_gps( int total )
+{
+	int i, j, gnum;
+
+	for ( i = 0; i < total; i++ ) {
+		for ( j = 0; j < MAX_COUNTERS; j++ ) {
+			/*      native_table[i].resources.rgg[j]=-1; */
+			if ( native_table[i].resources.selector & ( 1 << j ) ) {
+				for ( gnum = 0; gnum < pmgroups.maxgroups; gnum++ ) {
+					if ( native_table[i].resources.counter_cmd[j] ==
+						 pmgroups.event_groups[gnum].events[j] ) {
+						/* could use gnum instead of pmgroups.event_groups[gnum].group_id */
+						native_table[i].resources.group[pmgroups.
+														event_groups[gnum].
+														group_id / 32] |=
+							1 << ( pmgroups.event_groups[gnum].group_id % 32 );
+					}
+				}
+			}
+		}
+	}
+
+	for ( gnum = 0; gnum < pmgroups.maxgroups; gnum++ ) {
+		for ( i = 0; i < MAX_COUNTERS; i++ ) {
+			/*group_map[gnum].counter_cmd[i] = pmgroups.event_groups[gnum].events[i]; */
+		    if (pmgroups.event_groups[gnum].group_id >=MAX_GROUPS) {
+		       fprintf(stderr,"ERROR, group number trying to go past MAX GROUPS\n");
+		       continue;
+		    } 
+
+			group_map[pmgroups.event_groups[gnum].group_id].counter_cmd[i] =
+				pmgroups.event_groups[gnum].events[i];
+		}
+	}
+}
+
+/* to setup native_table values, and return number of entries */
+int
+aix_ppc64_setup_native_table(  )
+{
+	hwd_pmevents_t *wevp;
+	hwd_pminfo_t *info;
+	int pmc, ev, i, j, index;
+
+	info = &pminfo;
+	index = 0;
+	aix_initialize_native_table(  );
+	for ( pmc = 0; pmc < info->maxpmcs; pmc++ ) {
+		wevp = info->list_events[pmc];
+		for ( ev = 0; ev < info->maxevents[pmc]; ev++, wevp++ ) {
+			for ( i = 0; i < index; i++ ) {
+				if ( strcmp( wevp->short_name, native_table[i].name ) == 0 ) {
+					native_table[i].resources.selector |= 1 << pmc;
+					native_table[i].resources.counter_cmd[pmc] = wevp->event_id;
+					break;
+				}
+			}
+			if ( i == index ) {
+				/*native_table[i].index=i; */
+				native_table[i].resources.selector |= 1 << pmc;
+				native_table[i].resources.counter_cmd[pmc] = wevp->event_id;
+				native_table[i].name = wevp->short_name;
+				native_table[i].description = wevp->description;
+				native_name_map[i].name = native_table[i].name;
+				native_name_map[i].index = i;
+				index++;
+			}
+		}
+	}
+	aix_ppc64_setup_gps( index );
+
+	return index;
+}
+
+/* Reports the elements of the hwd_register_t struct as an array of names and a matching array of values.
+   Maximum string length is name_len; Maximum number of values is count.
+*/
+static void
+copy_value( unsigned int val, char *nam, char *names, unsigned int *values,
+			int len )
+{
+	*values = val;
+	strncpy( names, nam, len );
+	names[len - 1] = '\0';
+}
+
+
+/* this function recusively does Modified Bipartite Graph counter allocation 
+     success  return 1
+        fail     return 0
+*/
+static int
+do_counter_allocation( ppc64_reg_alloc_t * event_list, int size )
+{
+	int i, j, group = -1;
+	unsigned int map[GROUP_INTS];
+
+	for ( i = 0; i < GROUP_INTS; i++ )
+		map[i] = event_list[0].ra_group[i];
+
+	for ( i = 1; i < size; i++ ) {
+		for ( j = 0; j < GROUP_INTS; j++ )
+			map[j] &= event_list[i].ra_group[j];
+	}
+
+	for ( i = 0; i < GROUP_INTS; i++ ) {
+		if ( map[i] ) {
+			group = ffs( map[i] ) - 1 + i * 32;
+			break;
+		}
+	}
+
+	if ( group < 0 )
+		return group;		 /* allocation fail */
+	else {
+		for ( i = 0; i < size; i++ ) {
+			for ( j = 0; j < MAX_COUNTERS; j++ ) {
+				if ( event_list[i].ra_counter_cmd[j] >= 0
+					 && event_list[i].ra_counter_cmd[j] ==
+					 group_map[group].counter_cmd[j] )
+					event_list[i].ra_position = j;
+			}
+		}
+		return group;
+	}
+}
+
+
+/* this function will be called when there are counters available 
+     success  return 1
+        fail     return 0
+*/
+int
+_aix_allocate_registers( EventSetInfo_t * ESI )
+{
+	hwd_control_state_t *this_state = ESI->ctl_state;
+	unsigned char selector;
+	int i, j, natNum, index;
+	ppc64_reg_alloc_t event_list[MAX_COUNTERS];
+	int position, group;
+
+
+	/* not yet successfully mapped, but have enough slots for events */
+
+	/* Initialize the local structure needed 
+	   for counter allocation and optimization. */
+	natNum = ESI->NativeCount;
+	for ( i = 0; i < natNum; i++ ) {
+		/* CAUTION: Since this is in the hardware layer, it's ok 
+		   to access the native table directly, but in general this is a bad idea */
+		event_list[i].ra_position = -1;
+		/* calculate native event rank, which is number of counters it can live on, this is power3 specific */
+		for ( j = 0; j < MAX_COUNTERS; j++ ) {
+			if ( ( index =
+				   native_name_map[ESI->NativeInfoArray[i].
+								   ni_event & PAPI_NATIVE_AND_MASK].index ) <
+				 0 )
+				return PAPI_ECNFLCT;
+			event_list[i].ra_counter_cmd[j] =
+				native_table[index].resources.counter_cmd[j];
+		}
+		for ( j = 0; j < GROUP_INTS; j++ ) {
+			if ( ( index =
+				   native_name_map[ESI->NativeInfoArray[i].
+								   ni_event & PAPI_NATIVE_AND_MASK].index ) <
+				 0 )
+				return PAPI_ECNFLCT;
+			event_list[i].ra_group[j] = native_table[index].resources.group[j];
+		}
+		/*event_list[i].ra_mod = -1; */
+	}
+
+	if ( ( group = do_counter_allocation( event_list, natNum ) ) >= 0 ) {	/* successfully mapped */
+		/* copy counter allocations info back into NativeInfoArray */
+		this_state->group_id = group;
+		for ( i = 0; i < natNum; i++ )
+			ESI->NativeInfoArray[i].ni_position = event_list[i].ra_position;
+		/* update the control structure based on the NativeInfoArray */
+	  /*_papi_hwd_update_control_state(this_state, ESI->NativeInfoArray, natNum);*/
+		return PAPI_OK;
+	} else {
+		return PAPI_ECNFLCT;
+	}
+}
+
+int
+_aix_init_control_state( hwd_control_state_t * ptr )
+{
+	int i;
+
+	for ( i = 0; i < _aix_vector.cmp_info.num_cntrs; i++ ) {
+		ptr->counter_cmd.events[i] = COUNT_NOTHING;
+	}
+	ptr->counter_cmd.mode.b.is_group = 1;
+
+	_aix_vector.set_domain( ptr, _aix_vector.cmp_info.default_domain );
+	_aix_set_granularity( ptr, _aix_vector.cmp_info.default_granularity );
+	/*setup_native_table(); */
+	return ( PAPI_OK );
+}
+
+
+/* This function updates the control structure with whatever resources are allocated
+    for all the native events in the native info structure array. */
+int
+_aix_update_control_state( hwd_control_state_t * this_state,
+						   NativeInfo_t * native, int count,
+						   hwd_context_t * context )
+{
+
+	this_state->counter_cmd.events[0] = this_state->group_id;
+	return PAPI_OK;
+}
+
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	/* The following is for any POWER hardware */
@@ -83,7 +315,7 @@ int
 _aix_ntv_code_to_name( unsigned int EventCode, char *ntv_name, int len )
 {
 	if ( ( EventCode & PAPI_NATIVE_AND_MASK ) >=
-		 MY_VECTOR.cmp_info.num_native_events )
+		 _aix_vector.cmp_info.num_native_events )
 		return ( PAPI_ENOEVNT );
 	strncpy( ntv_name,
 			 native_name_map[EventCode & PAPI_NATIVE_AND_MASK].name, len );
@@ -98,7 +330,7 @@ int
 _aix_ntv_code_to_descr( unsigned int EventCode, char *ntv_descr, int len )
 {
 	if ( ( EventCode & PAPI_NATIVE_AND_MASK ) >=
-		 MY_VECTOR.cmp_info.num_native_events )
+		 _aix_vector.cmp_info.num_native_events )
 		return ( PAPI_ENOEVNT );
 	strncpy( ntv_descr,
 			 native_table[native_name_map[EventCode & PAPI_NATIVE_AND_MASK].
@@ -384,8 +616,6 @@ _aix_get_system_info( papi_mdi_t *mdi )
 	if ( retval > 0 )
 		return ( retval );
 
-	strcpy( MY_VECTOR.cmp_info.name, "$Id: aix.c,v 1.93 2011/04/04 13:45:54 ralph Exp $" );	/* Name of the substrate we're using */
-
 	_aix_mdi_init(  );
 
 	_papi_hwi_system_info.hw_info.nnodes = 1;
@@ -400,15 +630,19 @@ _aix_get_system_info( papi_mdi_t *mdi )
 	_papi_hwi_system_info.hw_info.revision =
 		( float ) _system_configuration.version;
 	_papi_hwi_system_info.hw_info.mhz = ( float ) ( pm_cycles(  ) / 1000000.0 );
+	_papi_hwi_system_info.hw_info.cpu_max_mhz=_papi_hwi_system_info.hw_info.mhz;
+	_papi_hwi_system_info.hw_info.cpu_min_mhz=_papi_hwi_system_info.hw_info.mhz;
+
 /*   _papi_hwi_system_info.num_gp_cntrs = pminfo.maxpmcs;*/
-	MY_VECTOR.cmp_info.num_cntrs = pminfo.maxpmcs;
-	MY_VECTOR.cmp_info.cntr_groups = 1;
-	MY_VECTOR.cmp_info.available_granularities = PAPI_GRN_THR;
+	_aix_vector.cmp_info.num_cntrs = pminfo.maxpmcs;
+	_aix_vector.cmp_info.num_mpx_cntrs = MAX_MPX_COUNTERS;   // pminfo.maxpmcs,
+
+	_aix_vector.cmp_info.available_granularities = PAPI_GRN_THR;
 /* This field doesn't appear to exist in the PAPI 3.0 structure 
   _papi_hwi_system_info.cpunum = mycpu(); 
 */
-	MY_VECTOR.cmp_info.available_domains = init_domain(  );
-	return ( PAPI_OK );
+	_aix_vector.cmp_info.available_domains = init_domain(  );
+	return PAPI_OK;
 }
 
 /* Low level functions, should not handle errors, just return codes. */
@@ -432,11 +666,11 @@ long long
 _aix_get_real_cycles( void )
 {
 	return ( _aix_get_real_usec(  ) *
-			 ( long long ) _papi_hwi_system_info.hw_info.mhz );
+			 ( long long ) _papi_hwi_system_info.hw_info.cpu_max_mhz );
 }
 
 long long
-_aix_get_virt_usec( const hwd_context_t * context )
+_aix_get_virt_usec( void )
 {
 	long long retval;
 	struct tms buffer;
@@ -450,13 +684,6 @@ _aix_get_virt_usec( const hwd_context_t * context )
 	return ( retval );
 }
 
-long long
-_aix_get_virt_cycles( const hwd_context_t * context )
-{
-	return ( _aix_get_virt_usec( context ) *
-			 ( long long ) _papi_hwi_system_info.hw_info.mhz );
-}
-
 static void
 _aix_lock_init( void )
 {
@@ -465,99 +692,56 @@ _aix_lock_init( void )
 		lock[i] = ( int * ) ( lock_var + i );
 }
 
-/*
-papi_svector_t  _aix_table[] = {
-     {( void ( * )(  ) ) _papi_hwd_get_overflow_address,
-      VEC_PAPI_HWD_GET_OVERFLOW_ADDRESS},
-     {( void ( * )(  ) ) _papi_hwd_update_shlib_info,
-      VEC_PAPI_HWD_UPDATE_SHLIB_INFO},
-     {( void ( * )(  ) ) _papi_hwd_init, VEC_PAPI_HWD_INIT},
-     {( void ( * )(  ) ) _papi_hwd_dispatch_timer,
-      VEC_PAPI_HWD_DISPATCH_TIMER},
-     {( void ( * )(  ) ) _papi_hwd_ctl, VEC_PAPI_HWD_CTL},
-     {( void ( * )(  ) ) _papi_hwd_get_real_usec, VEC_PAPI_HWD_GET_REAL_USEC},
-     {( void ( * )(  ) ) _papi_hwd_get_real_cycles,
-      VEC_PAPI_HWD_GET_REAL_CYCLES},
-     {( void ( * )(  ) ) _papi_hwd_get_virt_cycles,
-      VEC_PAPI_HWD_GET_VIRT_CYCLES},
-     {( void ( * )(  ) ) _papi_hwd_get_virt_usec, VEC_PAPI_HWD_GET_VIRT_USEC},
-     {( void ( * )(  ) ) _papi_hwd_start, VEC_PAPI_HWD_START},
-     {( void ( * )(  ) ) _papi_hwd_stop, VEC_PAPI_HWD_STOP},
-     {( void ( * )(  ) ) _papi_hwd_read, VEC_PAPI_HWD_READ},
-     {( void ( * )(  ) ) _papi_hwd_reset, VEC_PAPI_HWD_RESET},
-     {( void ( * )(  ) ) _papi_hwd_get_dmem_info, VEC_PAPI_HWD_GET_DMEM_INFO},
-     {( void ( * )(  ) ) _papi_hwd_set_overflow, VEC_PAPI_HWD_SET_OVERFLOW},
-     {( void ( * )(  ) ) _papi_hwd_ntv_enum_events,
-      VEC_PAPI_HWD_NTV_ENUM_EVENTS},
-     {( void ( * )(  ) ) _papi_hwd_ntv_code_to_name,
-      VEC_PAPI_HWD_NTV_CODE_TO_NAME},
-     {( void ( * )(  ) ) _papi_hwd_ntv_code_to_descr,
-      VEC_PAPI_HWD_NTV_CODE_TO_DESCR},
-     {( void ( * )(  ) ) _papi_hwd_ntv_code_to_bits,
-      VEC_PAPI_HWD_NTV_CODE_TO_BITS},
-     {( void ( * )(  ) ) _papi_hwd_shutdown, VEC_PAPI_HWD_SHUTDOWN},
-     {NULL, VEC_PAPI_END}
-};
-*/
-
 int
-_aix_shutdown( hwd_context_t * ctx )
+_aix_shutdown_thread( hwd_context_t * ctx )
 {
 	return ( PAPI_OK );
 }
 
 int
-_aix_init_substrate( int cidx )
+_aix_init_component( int cidx )
 {
 	int retval = PAPI_OK, procidx;
 
 	/* Fill in what we can of the papi_system_info. */
-	retval = MY_VECTOR.get_system_info( &_papi_hwi_system_info );
+	retval = _papi_os_vector.get_system_info( &_papi_hwi_system_info );
 	if ( retval )
 		return ( retval );
 
 	/* Setup memory info */
-	retval = MY_VECTOR.get_memory_info( &_papi_hwi_system_info.hw_info, 0 );
+	retval = _papi_os_vector.get_memory_info( &_papi_hwi_system_info.hw_info, 0 );
 	if ( retval )
 		return ( retval );
 
-	SUBDBG( "Found %d %s %s CPU's at %f Mhz.\n",
+	SUBDBG( "Found %d %s %s CPUs at %d Mhz.\n",
 			_papi_hwi_system_info.hw_info.totalcpus,
 			_papi_hwi_system_info.hw_info.vendor_string,
 			_papi_hwi_system_info.hw_info.model_string,
-			_papi_hwi_system_info.hw_info.mhz );
+			_papi_hwi_system_info.hw_info.cpu_max_mhz );
 
-	MY_VECTOR.cmp_info.CmpIdx = cidx;
-	MY_VECTOR.cmp_info.num_native_events = ppc64_setup_native_table(  );
+	_aix_vector.cmp_info.CmpIdx = cidx;
+	_aix_vector.cmp_info.num_native_events = aix_ppc64_setup_native_table(  );
 
-/*#if !defined(_POWER5)
-   if (!_papi_hwd_init_preset_search_map(&pminfo)){ 
-      return (PAPI_ESBSTR);}
-
-   retval = _papi_hwi_setup_all_presets(preset_search_map, NULL);
-#else
-   _papi_pmapi_setup_presets("POWER5", 0);
-#endif*/
 	procidx = pm_get_procindex(  );
 	switch ( procidx ) {
 	case PM_POWER5:
-		_papi_pmapi_setup_presets( "POWER5", 0 );
+	  _papi_load_preset_table( "POWER5", 0, cidx );
 		break;
 	case PM_POWER5_II:
-		_papi_pmapi_setup_presets( "POWER5+", 0 );
+	  _papi_load_preset_table( "POWER5+", 0, cidx );
 		break;
 	case PM_POWER6:
-		_papi_pmapi_setup_presets( "POWER6", 0 );
+	  _papi_load_preset_table( "POWER6", 0, cidx );
 		break;
 	case PM_PowerPC970:
-		_papi_pmapi_setup_presets( "PPC970", 0 );
+	  _papi_load_preset_table( "PPC970", 0, cidx );
 		break;
 	case PM_POWER7:
-		_papi_pmapi_setup_presets( "POWER7", 0);
+	  _papi_load_preset_table( "POWER7", 0, cidx );
 		break;
 	default:
 		fprintf( stderr, "%s is not supported!\n", pminfo.proc_name );
-		return ( PAPI_ESBSTR );
+		return PAPI_ENOIMPL;
 	}
 
 	_aix_lock_init(  );
@@ -565,8 +749,9 @@ _aix_init_substrate( int cidx )
 	return ( retval );
 }
 
+
 int
-_aix_init( hwd_context_t * context )
+_aix_init_thread( hwd_context_t * context )
 {
 	int retval;
 	/* Initialize our global control state. */
@@ -596,7 +781,7 @@ set_hwcntr_codes( int selector, unsigned char *from, int *to )
 {
 	int useme, i;
 
-	for ( i = 0; i < MY_VECTOR.cmp_info.num_cntrs; i++ ) {
+	for ( i = 0; i < _aix_vector.cmp_info.num_cntrs; i++ ) {
 		useme = ( 1 << i ) & selector;
 		if ( useme ) {
 			to[i] = from[i];
@@ -674,14 +859,14 @@ _aix_read( hwd_context_t * ctx, hwd_control_state_t * spc,
 	return ( PAPI_OK );
 }
 
-inline_static int
+static int
 round_requested_ns( int ns )
 {
-	if ( ns <= _aix_vector.cmp_info.itimer_res_ns ) {
-		return _aix_vector.cmp_info.itimer_res_ns;
+	if ( ns <= _papi_os_info.itimer_res_ns ) {
+		return _papi_os_info.itimer_res_ns;
 	} else {
-		int leftover_ns = ns % _aix_vector.cmp_info.itimer_res_ns;
-		return ( ns - leftover_ns + _aix_vector.cmp_info.itimer_res_ns );
+		int leftover_ns = ns % _papi_os_info.itimer_res_ns;
+		return ( ns - leftover_ns + _papi_os_info.itimer_res_ns );
 	}
 }
 
@@ -754,7 +939,7 @@ _aix_dispatch_timer( int signal, siginfo_t * si, void *i )
 
 	address = ( caddr_t ) GET_OVERFLOW_ADDRESS( ( &ctx ) );
 	_papi_hwi_dispatch_overflow_signal( ( void * ) &ctx, address, NULL, 0, 0,
-										&t, MY_VECTOR.cmp_info.CmpIdx );
+					    &t, _aix_vector.cmp_info.CmpIdx );
 }
 
 int
@@ -1001,23 +1186,60 @@ _aix_update_shlib_info( papi_mdi_t *mdi )
 	_papi_hwi_system_info.shlib_info.count = t_index + 1;
 	papi_free( tmp1 );
 
-	return ( PAPI_OK );
+	return PAPI_OK;
 #else
-	return PAPI_ESBSTR;
+	return PAPI_ENOIMPL;
 #endif
 }
+
+int
+_aix_ntv_name_to_code( char *name, unsigned int *evtcode )
+{
+       int i;
+
+       for ( i = 0; i < PAPI_MAX_NATIVE_EVENTS; i++ )
+               if ( strcmp( name, native_name_map[i].name ) == 0 ) {
+                       *evtcode = native_name_map[i].index | PAPI_NATIVE_MASK;
+                       return PAPI_OK;
+               }
+
+       return PAPI_ENOEVNT;
+}
+
+
+PAPI_os_info_t _papi_os_info;
+
+int 
+_papi_hwi_init_os(void) {
+  
+   struct utsname uname_buffer;
+
+   uname(&uname_buffer);
+
+   strncpy(_papi_os_info.name,uname_buffer.sysname,PAPI_MAX_STR_LEN);
+
+   strncpy(_papi_os_info.version,uname_buffer.release,PAPI_MAX_STR_LEN);
+   
+   _papi_os_info.itimer_sig = PAPI_INT_MPX_SIGNAL;
+   _papi_os_info.itimer_num = PAPI_INT_ITIMER;
+   _papi_os_info.itimer_res_ns = 1;
+   _papi_os_info.itimer_ns = 1000 * PAPI_INT_MPX_DEF_US;
+
+   return PAPI_OK;
+
+}
+
 
 papi_vector_t _aix_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
+
+                                 .name = "aix",
+				 .description = "AIX pmapi CPU counters", 
 				 .default_domain = PAPI_DOM_USER,
 				 .available_domains = PAPI_DOM_USER | PAPI_DOM_KERNEL,
 				 .default_granularity = PAPI_GRN_THR,
 				 .available_granularities = PAPI_GRN_THR,
-				 .itimer_sig = PAPI_INT_MPX_SIGNAL,
-				 .itimer_num = PAPI_INT_ITIMER,
-				 .itimer_res_ns = 1,
 				 .hardware_intr_sig = PAPI_INT_SIGNAL,
 
 				 /* component specific cmp_info initializations */
@@ -1050,24 +1272,25 @@ papi_vector_t _aix_vector = {
 	.reset = _aix_reset,
 	.set_overflow = _aix_set_overflow,
 /*    .stop_profiling =		_aix_stop_profiling, */
-	.ntv_enum_events = _aix_ntv_enum_events,
-/*    .ntv_name_to_code =		_aix_ntv_name_to_code, */
-	.ntv_code_to_name = _aix_ntv_code_to_name,
+	.ntv_enum_events =   _aix_ntv_enum_events,
+	.ntv_name_to_code =  _aix_ntv_name_to_code,
+	.ntv_code_to_name =  _aix_ntv_code_to_name,
 	.ntv_code_to_descr = _aix_ntv_code_to_descr,
-	.ntv_code_to_bits = _aix_ntv_code_to_bits,
-	.ntv_bits_to_info = _aix_ntv_bits_to_info,
+	.ntv_code_to_bits =  _aix_ntv_code_to_bits,
 
-	/* from OS */
-	.get_memory_info = _aix_get_memory_info,
-	.get_system_info = _aix_get_system_info,
-	.init_substrate = _aix_init_substrate,
+	.init_component = _aix_init_component,
 	.ctl = _aix_ctl,
 	.dispatch_timer = _aix_dispatch_timer,
-	.init = _aix_init,
+	.init_thread = _aix_init_thread,
+	.shutdown_thread = _aix_shutdown_thread,
+};
+
+papi_os_vector_t _papi_os_vector = {
+	.get_memory_info = _aix_get_memory_info,
 	.get_dmem_info = _aix_get_dmem_info,
-	.shutdown = _aix_shutdown,
 	.get_real_usec = _aix_get_real_usec,
 	.get_real_cycles = _aix_get_real_cycles,
-	.get_virt_cycles = _aix_get_virt_cycles,
-	.get_virt_usec = _aix_get_virt_usec
+        .get_virt_usec = _aix_get_virt_usec,
+        .update_shlib_info = _aix_update_shlib_info,
+	.get_system_info = _aix_get_system_info,
 };

@@ -4,16 +4,10 @@
 
 /** 
  * @file    linux-cuda.h
- * CVS:     $Id: linux-cuda.h,v 1.1 2011/03/11 23:06:54 jagode Exp $
  * @author  Heike Jagode (in collaboration with Robert Dietrich, TU Dresden)
  *          jagode@eecs.utk.edu
- * Mods:	<your name here>
- *			<your email address>
- * @ingroup papi_components 		
- * 
- * CUDA component 
- * 
- * Tested version of CUPTI (CUDA Tools SDK 4.0)
+ *
+ * @ingroup papi_components
  *
  * @brief
  *  This file has the source code for a component that enables PAPI-C to 
@@ -64,7 +58,7 @@ typedef struct DomainData
 {
 	CUpti_EventDomainID domainId;	   // CuPTI domain id
 	char name[PAPI_MIN_STR_LEN];	   // domain name
-	int eventCount;					   // number of events per domain
+	uint32_t eventCount;			   // number of events per domain
 	EventData_t *event;
 } DomainData_t;
 
@@ -112,22 +106,29 @@ typedef struct CUDA_reg_alloc
 
 typedef struct CUDA_control_state
 {
+	CUpti_EventGroup eventGroup;
+	AddedEvents_t addedEvents;
 	long long counts[CUDA_MAX_COUNTERS];
 	int ncounter;
+	int old_count;
 } CUDA_control_state_t;
 
-
+/* Holds per-thread information */
 typedef struct CUDA_context
 {
 	CUDA_control_state_t state;
 } CUDA_context_t;
 
-
+ 
 /*************************  GLOBALS SECTION  ***********************************
  *******************************************************************************/
 
 static int enumEventDomains( CUdevice dev, int deviceId );
+#ifdef CUDA_4_0
 static int enumEvents( CUdevice dev, int domainId, int eventCount );
+#else
+static int enumEvents( int domainId, int eventCount );
+#endif
 
 /* This table contains the CUDA native events */
 static CUDA_native_event_entry_t *cuda_native_table;
@@ -137,10 +138,22 @@ static int deviceCount = 0;
 static int totalDomainCount = 0;
 static int totalEventCount = 0;
 static int currentDeviceID;			   /* determine the actual device the user code is running on */
+static int CUDA_FREED = 0;
 
-DeviceData_t *device;
-AddedEvents_t addedEvents;
-CUpti_EventGroup eventGroup;
-CUcontext cuCtx;
+/* 
+ * Why are device and cuCtx globals?
+ *
+ * Starting in CUDA 4.0, multiple CPU threads can access the same CUDA context.
+ * This is a much easier programming model then pre-4.0 as threads - using the 
+ * same context - can share memory, data, etc. 
+ * It's possible to create a different context for each thread, but then we are
+ * likely running into a limitation that only one context can be profiled at a time.
+ * ==> and we don't want this. That's why CUDA context creation is done in 
+ * CUDA_init_component() (called only by main thread) rather than CUDA_init_thread() 
+ * or CUDA_init_control_state() (both called by each thread).
+ */
+
+static DeviceData_t *device;
+static CUcontext cuCtx;
 
 #endif /* _PAPI_CUDA_H */

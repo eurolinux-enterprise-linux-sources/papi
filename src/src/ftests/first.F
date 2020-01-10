@@ -12,8 +12,8 @@
       character*(PAPI_MAX_STR_LEN) domainstr, grnstr
       character*(PAPI_MAX_STR_LEN) name
 
-      Integer len_trim, n
-      External len_trim
+      Integer last_char, n
+      External last_char
       integer tests_quiet, get_quiet
       external get_quiet
 
@@ -138,7 +138,7 @@
             call ftest_fail(__FILE__, __LINE__, 
      * 'PAPIf_event_code_to_name', retval)
         end if
-        n=len_trim(name)
+        n=last_char(name)
         write (*,800) 'Default granularity is:', granularity, grnstr
  800    format(a25, i3, ' ', a20)
 
@@ -165,8 +165,8 @@
         print *, 'Column 4 exactly equals column 5'
       end if
 
-      min = values(3)*0.8
-      max = values(3)*1.2
+      min = INT(values(3)*0.8)
+      max = INT(values(3)*1.2)
 
       if ((values(1).gt.max) .OR. (values(1).lt.min) .OR. 
      *(values(5).gt.(max*2)) .OR. (values(5).lt.(min*2)) .OR.
@@ -176,8 +176,8 @@
      . name, 1)
       end if
 
-      min = values(4)*0.65
-      max = values(4)*1.35
+      min = INT(values(4)*0.65)
+      max = INT(values(4)*1.35)
       if ((values(2).gt.max) .OR. (values(2).lt.min) .OR. 
      *(values(6).gt.(max*2)) .OR. (values(6).lt.(min*2)) .OR.
      *(values(8).gt.(max*3)) .OR. (values(8).lt.(min*3)) .OR.

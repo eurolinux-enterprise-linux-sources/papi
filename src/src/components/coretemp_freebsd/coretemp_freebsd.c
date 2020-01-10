@@ -3,7 +3,7 @@
 /****************************/
 
 /**
- * @file    coretemp-freebsd.c
+ * @file    coretemp_freebsd.c
  * @author  Joachim Protze
  *          joachim.protze@zih.tu-dresden.de
  * @author  Vince Weaver
@@ -31,6 +31,7 @@
 /* Headers required by PAPI */
 #include "papi.h"
 #include "papi_internal.h"
+#include "papi_vector.h"
 #include "papi_memory.h"
 
 #define CORETEMP_MAX_COUNTERS 32 /* Can we tune this dynamically? */
@@ -90,17 +91,21 @@ static int CORETEMP_NUM_EVENTS = 0;
 /********************************************************************/
 
 /** This is called whenever a thread is initialized */
-int coretemp_init (hwd_context_t * ctx)
+int coretemp_init_thread (hwd_context_t * ctx)
 {
 	int mib[4];
 	size_t len;
 	UNREFERENCED(ctx);
 
-	SUBDBG("coretemp_init %p...\n", ctx);
+	SUBDBG("coretemp_init_thread %p...\n", ctx);
+
+#if 0
+	/* what does this do?  VMW */
 
 	len = 4;
 	if (sysctlnametomib ("dev.coretemp.0.%driver", mib, &len) == -1)
-		return PAPI_ESBSTR;
+		return PAPI_ECMP;
+#endif
 
 	return PAPI_OK;
 }
@@ -110,7 +115,7 @@ int coretemp_init (hwd_context_t * ctx)
  * and get hardware information, this routine is called when the
  * PAPI process is initialized (IE PAPI_library_init)
  */
-int coretemp_init_substrate ()
+int coretemp_init_component ()
 {
 	int ret;
 	int i;
@@ -118,7 +123,7 @@ int coretemp_init_substrate ()
 	size_t len;
 	char tmp[128];
 
-	SUBDBG("coretemp_init_substrate...\n");
+	SUBDBG("coretemp_init_component...\n");
 
 	/* Count the number of cores (counters) that have sensors allocated */
 	i = 0;
@@ -141,7 +146,7 @@ int coretemp_init_substrate ()
 	if (coretemp_native_table == NULL)
 	{
 		perror( "malloc():Could not get memory for coretemp events table" );
-		return EXIT_FAILURE;
+		return PAPI_ENOMEM;
 	}
 
 	/* Allocate native events internal structures */
@@ -157,7 +162,7 @@ int coretemp_init_substrate ()
 		sprintf (tmp, "dev.cpu.%d.temperature", i);
 		len = 4;
 		if (sysctlnametomib (tmp, coretemp_native_table[i].resources.mib, &len) == -1)
-			return PAPI_ESBSTR;
+			return PAPI_ECMP;
 
 		coretemp_native_table[i].resources.selector = i+1;
 	}
@@ -187,20 +192,19 @@ int coretemp_init_control_state (hwd_control_state_t * ctrl)
 */
 int coretemp_ntv_enum_events (unsigned int *EventCode, int modifier)
 {
-	int cidx = PAPI_COMPONENT_INDEX( *EventCode );
 
 	switch ( modifier )
 	{
 		/* return EventCode of first event */
 		case PAPI_ENUM_FIRST:
-		*EventCode = PAPI_NATIVE_MASK | PAPI_COMPONENT_MASK( cidx );
+		*EventCode = 0;
 		return PAPI_OK;
 		break;
 
 		/* return EventCode of passed-in Event */
 		case PAPI_ENUM_EVENTS:
 		{
-			int index = *EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+			int index = *EventCode;
 
 			if ( index < CORETEMP_NUM_EVENTS - 1 )
 			{
@@ -226,7 +230,7 @@ int coretemp_ntv_enum_events (unsigned int *EventCode, int modifier)
  */
 int coretemp_ntv_code_to_name (unsigned int EventCode, char *name, int len)
 {
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+	int index = EventCode;
 
 	strncpy( name, coretemp_native_table[index].name, len );
 
@@ -240,7 +244,7 @@ int coretemp_ntv_code_to_name (unsigned int EventCode, char *name, int len)
  */
 int coretemp_ntv_code_to_descr (unsigned int EventCode, char *name, int len)
 {
-	int index = EventCode & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+	int index = EventCode;
 
 	strncpy( name, coretemp_native_table[index].description, len );
 
@@ -269,7 +273,7 @@ int coretemp_update_control_state( hwd_control_state_t * ptr,
 
 	for (i = 0; i < count; i++)
 	{
-		index = native[i].ni_event & PAPI_NATIVE_AND_MASK & PAPI_COMPONENT_AND_MASK;
+		index = native[i].ni_event;
 		native[i].ni_position = coretemp_native_table[index].resources.selector - 1;
 		c->added[native[i].ni_position] = TRUE;
 
@@ -370,11 +374,10 @@ int coretemp_reset(hwd_context_t * ctx, hwd_control_state_t * ctrl)
 }
 
 /** Triggered by PAPI_shutdown() */
-int coretemp_shutdown (hwd_context_t * ctx)
+int coretemp_shutdown_component (void)
 {
-	UNREFERENCED(ctx);
 
-	SUBDBG( "coretemp_shutdown... %p\n", ctx );
+	SUBDBG( "coretemp_shutdown_component... %p\n", ctx );
 
 	/* Last chance to clean up */
 	papi_free (coretemp_native_table);
@@ -383,8 +386,11 @@ int coretemp_shutdown (hwd_context_t * ctx)
 }
 
 
-/** This function sets various options in the substrate
+
+/** This function sets various options in the component
+  @param ctx unused
   @param code valid are PAPI_SET_DEFDOM, PAPI_SET_DOMAIN, PAPI_SETDEFGRN, PAPI_SET_GRANUL and PAPI_SET_INHERIT
+  @param option unused
  */
 int coretemp_ctl (hwd_context_t * ctx, int code, _papi_int_option_t * option)
 {
@@ -447,9 +453,10 @@ int coretemp_set_domain (hwd_control_state_t * cntrl, int domain)
 papi_vector_t _coretemp_freebsd_vector = {
 	.cmp_info = {
 				 /* default component information (unspecified values are initialized to 0) */
-				 .name = "$Id: coretemp_freebsd.c,v 1.1 2011/01/16 22:34:39 servat Exp $",
-				 .version = "$Revision: 1.1 $",
-				 .num_mpx_cntrs = PAPI_MPX_DEF_DEG,
+				 .name = "coretemp_freebsd",
+				 .short_name = "coretemp",
+				 .version = "5.0",
+				 .num_mpx_cntrs = CORETEMP_MAX_COUNTERS,
 				 .num_cntrs = CORETEMP_MAX_COUNTERS,
 				 .default_domain = PAPI_DOM_USER,
 				 .available_domains = PAPI_DOM_USER,
@@ -474,21 +481,15 @@ papi_vector_t _coretemp_freebsd_vector = {
 			 }
 	,
 	/* function pointers in this component */
-	.init = coretemp_init,
-	.init_substrate = coretemp_init_substrate,
+	.init_thread = coretemp_init_thread,
+	.init_component = coretemp_init_component,
 	.init_control_state = coretemp_init_control_state,
 	.start = coretemp_start,
 	.stop = coretemp_stop,
 	.read = coretemp_read,
 	.write = coretemp_write,
-	.shutdown = coretemp_shutdown,
+	.shutdown_component = coretemp_shutdown_component,
 	.ctl = coretemp_ctl,
-	.bpt_map_set = NULL,
-	.bpt_map_avail = NULL,
-	.bpt_map_exclusive = NULL,
-	.bpt_map_shared = NULL,
-	.bpt_map_preempt = NULL,
-	.bpt_map_update = NULL,
 
 	.update_control_state = coretemp_update_control_state,
 	.set_domain = coretemp_set_domain,
@@ -498,6 +499,5 @@ papi_vector_t _coretemp_freebsd_vector = {
 	.ntv_code_to_name = coretemp_ntv_code_to_name,
 	.ntv_code_to_descr = coretemp_ntv_code_to_descr,
 	.ntv_code_to_bits = coretemp_ntv_code_to_bits,
-	.ntv_bits_to_info = NULL,
 };
 

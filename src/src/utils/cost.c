@@ -1,4 +1,4 @@
-/** @file cost.c
+/** file cost.c
   * @brief papi_cost utility.
   *	@page papi_cost
   * @section  NAME
@@ -16,13 +16,13 @@
   *
   *	@section Options
   *	<ul>
-  *		<li>-b <bins> Define the number of bins into which the results are 
+  *		<li>-b < bins > Define the number of bins into which the results are 
   *			partitioned for display. The default is 100.
   *		<li>-d	Display a graphical distribution of costs in a vertical histogram.
   *		<li>-h	Display help information about this utility.
   *		<li>-s	Show the number of iterations in each of the first 10 
   *			standard deviations above the mean.
-  *		<li>-t <threshold>	Set the threshold for the number of iterations to 
+  *		<li>-t < threshold > 	Set the threshold for the number of iterations to 
   *			measure costs. The default is 100,000.
   *	</ul>
   *
@@ -159,7 +159,7 @@ do_output( int test_type, long long *array, int bins, int show_std_dev,
 
 	if ( show_dist ) {
 		int *d;
-		d = malloc( ( size_t ) bins * sizeof ( int ) );
+		d = calloc( bins , sizeof ( int ) );
 		do_dist( array, min, max, bins, d );
 		print_dist( min, max, bins, d );
 		free( d );
@@ -171,6 +171,7 @@ int
 main( int argc, char **argv )
 {
 	int i, retval, EventSet = PAPI_NULL;
+	int retval_start,retval_stop;
 	int bins = 100;
 	int show_dist = 0, show_std_dev = 0;
 	long long totcyc, values[2];
@@ -265,10 +266,13 @@ main( int argc, char **argv )
 
 	for ( i = 0; i < num_iters; i++ ) {
 		totcyc = PAPI_get_real_cyc(  );
-		PAPI_start( EventSet );
-		PAPI_stop( EventSet, values );
-		totcyc = PAPI_get_real_cyc(  ) - totcyc;
+		retval_start=PAPI_start( EventSet );
+		retval_stop=PAPI_stop( EventSet, values );
+		totcyc = PAPI_get_real_cyc(  ) - totcyc;		
 		array[i] = totcyc;
+		if (retval_start || retval_stop) {
+		   test_fail( __FILE__, __LINE__, "PAPI start/stop", retval_start );
+		}
 	}
 
 	do_output( 1, array, bins, show_std_dev, show_dist );

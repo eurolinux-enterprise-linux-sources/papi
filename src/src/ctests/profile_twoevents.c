@@ -1,6 +1,6 @@
 /* 
 * File:    profile_twoevents.c
-* CVS:     $Id: profile_twoevents.c,v 1.21 2010/02/22 18:36:04 jagode Exp $
+* CVS:     $Id$
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>
@@ -9,6 +9,7 @@
 
 /* This file performs the following test: profiling two events */
 
+#include "papi_test.h"
 #include "prof_utils.h"
 
 int
@@ -19,13 +20,12 @@ main( int argc, char **argv )
 	int num_buckets, mask;
 	char title[80];
 	int retval;
-	const PAPI_hw_info_t *hw_info;
 	const PAPI_exe_info_t *prginfo;
 	caddr_t start, end;
 
-	prof_init( argc, argv, &hw_info, &prginfo );
+	prof_init( argc, argv, &prginfo );
 
-	mask = prof_events( num_tests, hw_info );
+	mask = prof_events( num_tests );
 	start = prginfo->address_info.text_start;
 	end = prginfo->address_info.text_end;
 

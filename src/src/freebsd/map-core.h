@@ -4,7 +4,7 @@
 
 /* 
 * File:    map-core.h
-* CVS:     $Id: map-core.h,v 1.5 2010/04/15 18:32:41 bsheely Exp $
+* CVS:     $Id$
 * Author:  Harald Servat
 *          redcrash@gmail.com
 */

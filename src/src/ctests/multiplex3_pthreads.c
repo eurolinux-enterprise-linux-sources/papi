@@ -1,6 +1,5 @@
 /* 
 * File:    multiplex3_pthreads.c
-* CVS:     $Id: multiplex3_pthreads.c,v 1.47 2010/08/25 22:08:19 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    John May
@@ -73,7 +72,7 @@ mainloop( int arg )
 		   PAPI_thread_init( ( unsigned
 							   long ( * )( void ) ) ( pthread_self ) ) ) !=
 		 PAPI_OK ) {
-		if ( retval == PAPI_ESBSTR )
+		if ( retval == PAPI_ECMP )
 			test_skip( __FILE__, __LINE__, "PAPI_thread_init", retval );
 		else
 			test_fail( __FILE__, __LINE__, "PAPI_thread_init", retval );

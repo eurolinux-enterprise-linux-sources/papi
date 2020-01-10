@@ -4,7 +4,7 @@
 
 /*
 * File:    perfctr-ppc64.h
-* CVS:     $Id: perfctr-ppc64.h,v 1.11 2010/04/09 21:10:27 bsheely Exp $
+* CVS:     $Id$
 * Author:  Maynard Johnson
 *          maynardj@us.ibm.com
 * Mods:    <your name here>

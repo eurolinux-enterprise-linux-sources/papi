@@ -1,6 +1,5 @@
 /* 
 * File:    sprofile.c
-* CVS:     $Id: sprofile.c,v 1.31 2010/02/22 18:36:04 jagode Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    Maynard Johnson
@@ -21,6 +20,7 @@
 
 /* This file performs the following test: sprofile */
 
+#include "papi_test.h"
 #include "prof_utils.h"
 
 int
@@ -33,16 +33,16 @@ main( int argc, char **argv )
 	int num_buckets;
 	PAPI_sprofil_t sprof[3];
 	int retval;
-	const PAPI_hw_info_t *hw_info;
 	const PAPI_exe_info_t *prginfo;
 	caddr_t start, end;
 
-	prof_init( argc, argv, &hw_info, &prginfo );
+	prof_init( argc, argv, &prginfo );
 
 	start = prginfo->address_info.text_start;
 	end = prginfo->address_info.text_end;
-	if ( start > end )
-		test_fail( __FILE__, __LINE__, "Profile length < 0!", PAPI_ESBSTR );
+	if ( start > end ) {
+	   test_fail( __FILE__, __LINE__, "Profile length < 0!", PAPI_ESYS );
+	}
 	length = ( unsigned long ) ( end - start );
 	prof_print_address
 		( "Test case sprofile: POSIX compatible profiling over multiple regions.\n",
@@ -75,7 +75,7 @@ main( int argc, char **argv )
 	sprof[2].pr_off = 0;
 	sprof[2].pr_scale = 0x2;
 
-	EventSet = add_test_events( &num_events, &mask );
+	EventSet = add_test_events( &num_events, &mask, 1 );
 
 	values = allocate_test_space( num_tests, num_events );
 

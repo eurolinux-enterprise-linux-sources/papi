@@ -1,13 +1,477 @@
-===============================================================================
-PAPI 4.1.3 RELEASE NOTES                                            06 May 2011
-===============================================================================
-
 This file documents changes in recent PAPI releases in inverse chronological
 order.
 
 For details on installing PAPI on your machine, consult the INSTALL.txt file
 in this directory.
+===============================================================================
+PAPI 5.1.1 RELEASE NOTES                                            21 May 2013
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+ChangeLogP511.txt for keywords of interest or go directly to the PAPI git
+repo.
 
+GENERAL NOTES
+===============================================================================
+This is a bug fix release.  
+
+New Platform:
+-------------
+	* Intel IvyBridge-EP
+
+Bug Fixes:
+----------
+	* Many perf_event fixes
+	* Cuda component fixes
+	* IA64 and SPARC build fixes
+
+Enhancements:
+------------
+	* Better logic in run_tests.sh script
+	* ARM builds now use pthread_mutexes
+	* BG/Q overflow enhancements
+
+===============================================================================
+PAPI 5.1.0 RELEASE NOTES                                            11 Jan 2013
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+ChangeLogP510.txt for keywords of interest or go directly to the PAPI git
+repo.
+
+New Platform:
+-------------
+	* Intel Xeon Phi ( Knight's Corner or KNC or MIC )
+
+Bug Fixes:
+----------
+	* Various build system fixes. 
+	* NVML component fix.
+	* Work around a sampling bug on Power Linux
+
+Enhancements:
+------------
+	* ARM Cortex A15 support.
+	* New API entry, PAPI_get_eventset_component
+	* Add options to papi_command_line to print in hex and unsigned formats
+
+New Components:
+---------------
+	* MIC Power component. 
+
+===============================================================================
+PAPI 5.0.1 RELEASE NOTES                                            20 Sep 2012
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+ChangeLogP501.txt for keywords of interest or go directly to the PAPI git
+repo.
+
+GENERAL NOTES
+===============================================================================
+This in a bug fix release of PAPI. Including a major bug fix in the preset
+code, we recommend that all users of PAPI 5.0 upgrade; see commit 866bd51c
+for a detailed discussion.  
+
+Bug Fixes:
+----------
+	* Debugging macros with out variadic macro support. 
+	* Building PAPI with an external libpfm4 installation.
+	* Fix a major bug in the preset code. 
+
+Enhancements:
+-------------
+	* CUDA configure script better supports Kepler architecture.
+	* rapl support for IvyBridge.
+	* Libpfm4 updates for SandyBridge-EP counters.
+ 
+===============================================================================
+PAPI 5.0.0 RELEASE NOTES                                            23 Aug 2012
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+ChangeLogP500.txt for keywords of interest or go directly to the PAPI git
+repo.
+
+GENERAL NOTES
+===============================================================================
+This is a major release of PAPI. Parts of both the internal component and 
+external low-level interfaces have changed, this will break your 4.4 compliant 
+components. Numerous bug fixes are also included in this release.  
+
+New Platforms:
+-------------
+  * Intel IvyBridge
+  * Intel Atom Cedarview
+
+New / Improved Components:
+---------------
+  * nVidia Management library component - support for various system health
+    and power measurements on supported nVidia gpus.
+  * stealtime - When running in a VM, this provides information on how much 
+    time was "stolen" by the hypervisor due to the VM being disabled.  
+    This is currently only supported on KVM.
+  * RAPL - a SandyBridge RAPL (Running Average Power Level) Component  
+    providing for energy measurement at the package-level. 
+  * VMware component for VMware pseudo-counters
+  * appio - This application I/O component enables PAPI-C to determine
+    I/O used by the application.
+
+Bug Fixes:
+----------
+  * Numerous memory leaks, thread races, and compiler warnings corrected.
+
+Enhancements:
+-------------
+  * Major overhaul of the component interface. 
+  * Update perf_event.c rdpmc support  
+  * Minor uncore fixes plus changes for rdpmc.
+  * Add a PAPI_REF_CYC preset event, defined as UNHALTED_REFERENCE_CYCLES for
+    all Intel platforms on which this native event is supported.
+  * Component names are now standardized in a meaningful way. 
+  * Multiplexing under perf_events has been improved. 
+  * FreeBSD cleanup/updates 
+  * appio component now intercepts recv()
+  * Power7 definition of L1_DCA and LST_INS updated to a countable definition
+  * Added BGPM's opcode and generic event functionality to PAPI for BG/Q
+    (requires Q32 driver V1R1M2).
+
+Open Issues:
+-------------
+  * SandyBridge PAPI_FP_* events only produce reasonable results when counted 
+    by themselves.
+  * Ivy Bridge does not support floating point events.
+
+Experimental:
+-------------
+
+Known Bugs:
+-----------
+  * Software multiplexing is known to have a memory leak.
+  * The byte-profile test is known to fail on Power7/AIX
+
+Deprecated:
+---------------------
+  * Java PAPI wrappers
+  * Windows
+
+
+===============================================================================
+PAPI 4.4.0 RELEASE NOTES                                            17 Apr 2012
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+ChangeLogP440.txt for keywords of interest or go directly to the PAPI git
+repo.
+
+GENERAL NOTES
+===============================================================================
+This is a major release of PAPI-C. Support for IBM Blue Gene/Q has been added.
+Multiple bug fixes are also included in this release.  
+This is also the first release of papi made from the git repository; 
+git clone http://icl.cs.utk.edu/git/papi.git 
+
+Visit the PAPI Reference pages for more information at:
+http://icl.cs.utk.edu/projects/papi/wiki/Main_Page
+And visit the PAPI website for the latest updates:
+http://icl.cs.utk.edu/papi/
+
+RECENT CHANGES IN PAPI 4.4.0
+===============================================================================
+New Platforms:
+-------------
+  * src/Rules.bgpm... Added PAPI support for Blue Gene/Q.
+
+Bug Fixes:
+----------
+  * Fix buffer overrun in lmsensors component  
+  * libpfm4: Update to current git libpfm4 snapshot
+  * Fix broken Pentium 4 Prescott support we were missing the netbusrt_p 
+	declaration in papi_events.csv
+  * Fix various locking issues in the threaded code. 
+  * Fix multiplexing of large eventsets on perf_events systems.
+	This presented when using more than 31 multiplexed events on perf_event  
+
+Enhancements:
+-------------
+  * Update the release machinery for git.  
+
+===============================================================================
+PAPI 4.2.1 RELEASE NOTES                                            13 Feb 2012
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+the ChangeLogP421.txt file for keywords of interest or go directly to the PAPI
+cvs tree.
+
+GENERAL NOTES
+===============================================================================
+This is a minor release of PAPI-C. It does not break binary or semantic 
+compatibility with previous versions.
+
+Visit the PAPI Reference pages for more information at:
+http://icl.cs.utk.edu/projects/papi/wiki/Main_Page
+And visit the PAPI website for the latest updates:
+http://icl.cs.utk.edu/papi/
+
+RECENT CHANGES IN PAPI 4.2.1
+===============================================================================
+Bug Fixes:
+----------
+	* solaris substrate set_domain call was added.
+	* multiplexing math errors were fixed in perf_events.c
+	* more multiplexing read path errors were identified and fixed
+	* src/linux-timer.c: Fix compilation warning if you specify
+	  --with-walltime=gettimeofday
+	* src/linux-timer.c: Fix the build on Linux systems using mmtimer
+	* src/linux-common.c: Update the linux MHz detection code to use
+	  bogoMIPS when there is no MHz field available in /proc/cpuinfo.
+	* src/: configure, configure.in: Fix a typo in the perfctr section;
+	  it was causing a machine to default to perfctr when it had no
+	  performance interface.  ( a centos vm image with a 2.6.18 kernel)
+	  Also checks that we actually have perfctr if we specify
+	  --with-perfctr.
+	* Fix SMP ARM issues reported by Harald Servat.
+	  Also, adds proper header dependency checking in the Rules files.
+	* src/ctests/api.c: Make the api test actually test PAPI_flops() as
+	  it claims to do, rather than PAPI_flips().
+	* src/papi_events.csv: Update the coreduo (not core2) events.  Most
+	  notably the FP events were wrong.
+	* src/papi_events.csv: Modify Intel Sandybridge PAPI_FP_OPS and
+	  PAPI_FP_INS events to not count x87 fp instructions.
+	  The problem is that the current predefines were made by adding 5
+	  events.  With the NMI watchdog stealing an event and/or
+	  hyperthreading reducing the number of available counters by half,
+	  we just couldn't fit.
+	  This now raises the potential for people using x87-compiled
+	  floating point on Sandybridge and getting 0 FP_OPS.  This is only
+	  likely if running a 32-bit kernel and *not* compiling your code
+	  with -msse.
+	  A long-term solution might be trying to find a better set of FP
+	  predefines for sandybridge.
+	* src/components/lmsensors/: Rules.lmsensors, configure.in: Fixed
+	  configure error message and rules link error for shared object
+	  linking. Thanks Will Cohen.
+	* src/components/lmsensors/linux-lmsensors.h: Added missing string
+	  header
+	* src/components/net/tests/: net_values_by_code.c,
+	  net_values_by_name.c: Apply patch suggested by Will Cohen to
+	  check for system return values.
+	* src/Makefile.inc: Patch to cleanup dependencies, allowing for
+	  parallel makes.  Patch due to Will Cohen from redhat
+	* src/: papi_internal.c, threads.c: Fix two race
+	  conditions that are probably the cause of the pthrtough
+	  double-free error.
+	  When freeing a thread, we remove and free all eventsets belonging
+	  to that thread.  This could race with the thread itself removing
+	  the evenset, causing some ESI fields to be freed twice.
+	  The problem was found by using the Valgrind 3.8 Helgrind tool
+	    valgrind --tool=helgrind --free-is-write=yes ctests/pthrtough
+	  In order for Helgrind to work, I had to temporarily modify PAPI
+	  to use POSIX pthread mutexes for locking.
+
+Enhancements:
+-------------
+	* general doxygen cleanups
+	* cleanup output of overflow_allcounters for clarity in debugging
+	* updates to most recent (as of Feb 1) libpfm4
+	* remove now-opaque event codes from papi_native_avail
+	  and papi_xml_event_info
+	* src/: papi_internal.c Update the component initialization code 
+	  so that it can handle a PAPI ERROR return gracefully.  Previously 
+	  there was no way to indicate initialization failure besides just 
+	  setting num_native_events to 0.
+	 
+New Platforms:
+-------------
+ 	* src/libpfm4/lib/: pfmlib_amd64_fam11h.c, events/amd64_events_fam11h.h
+	  Support for AMD Family 11.
+	* src/libpfm4/lib/: pfmlib_amd64_fam12h.c, events/amd64_events_fam12h.h
+	  Support for AMD Family 12.
+	
+Deprecated Platforms:
+---------------------
+	* remove obsolete ACPI component
+	
+New / Improved Components:
+---------------
+	* PAPI CUDA component updated for CUDA / CUPTI 4.1.
+		* SetCudaDevice() now works with the latest CUDA 4.1 version.
+		* Auto-detection of CUDA version for backward compatibility.
+		* PAPI_read() now accumulates event values. This fixes a bug
+		in earlier versions.
+	* extensive updates and cleanups to the example and coretemp components.
+	* significant updates of lustre, and mx components
+	* The linux net component underwent extensive updates and cleanups.
+  	  In particular, it nows dynamically detects the network
+	  interface names [1] and export 16 counters for each interface
+  	  (see also src/components/net/{CHANGES,README}).
+
+Open Issues:
+-------------
+	* multiplex1.c was rewritten to expose a multiplexing bug in the perf_events
+	kernel (3.0.3) for MIPS
+	* src/components/lmsensors/: Latest versions of lmsensors are incompatible
+	  with current lmsensors component. Interface needs to be updated for forward
+	  compatibility.
+	* There's a problem with broken overflow on POWER6 linux systems.
+	  We suspect a kernel problem, but don't know exactly which version(s)
+	  We're running a 2.6.36 kernel where the problem has been identified.
+	  It may be fixed in newer versions.
+
+Experimental:
+-------------
+	* a new vmware component has been added to report a variety of soft events
+	  when running as a guest in a VMWare environment
+	
+
+===============================================================================
+PAPI 4.2.0 RELEASE NOTES                                            26 Oct 2011
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+the ChangeLogP420.txt file for keywords of interest or go directly to the PAPI
+cvs tree.
+
+GENERAL NOTES
+===============================================================================
+This is a major release of PAPI-C. It add a significant new feature in 
+user-defined events. It also marks a shift from external (and out-dated) 
+man pages to doxygen generated man pages. These pages can be found online at:
+http://icl.cs.utk.edu/papi/docs/. They are also installable with "make install", 
+and you can build your own versions using doxygen.
+
+Visit the PAPI Reference pages for more information at:
+http://icl.cs.utk.edu/projects/papi/wiki/Main_Page
+And visit the PAPI website for the latest updates:
+http://icl.cs.utk.edu/papi/
+
+RECENT CHANGES IN PAPI 4.2.0
+===============================================================================
+Bug Fixes:
+----------
+	* Bug in CUDA v4.0 fixed. It caused a threaded application to hang when 
+	  parent called cuInit() before fork() and child called also cuInit().
+	  All fork ctests pass now if papi is configured with cuda component. 
+	* If papi is configured with cuda component and running a threaded 
+	  application, we need to make sure that a thread doesn't free the same 
+	  memory location(s) more than once. Now all pthread ctests pass with cuda.
+	* ctests/thrspecific works now with the CUDA component
+	* Added CudaRemoveEvent functionality (broken in earlier CUDA RC versions). 
+	* ctests/all_native_events works now for the default CUDA device.
+	* Add locking to papi_pfm4_events so that adding/looking up event names 
+	  doesn't have a race condition when multiple threads are doing it at once.
+	* Fixed a series of problems with Itanium builds.
+	* Set FD_CLOEXEC on the overflow signal handler fd. Otherwise if we exec()
+	  with overflow enabled, the exec'd process will quickly die due to lack 
+	  of signal handler. This patch is needed due to a change in behavior in 
+	  Linux 3.0. Mark Krentel first noticed this problem.
+	* Recent Ubuntu versions use the ld flag --as-needed by default, which
+	  breaks the PAPI configure step for the libdl check, as the
+	  --as-needed flag enforces the rule that libraries must come after the 
+	  object files on the command line, not before. The fix for this is to put 
+	  the libdl check it in LIBS instead of in LDFLAGS.
+	* Removed an fopen() without an fclose() on /proc/cpuinfo in papi.c. 
+	  This was being done to set the event masks properly for itanium and p4.
+	  Since the platform code sets CPU vendor and family for us we don't
+	  really have to open cpuinfo.  This fix may also work on non-Linux 
+	  systems too.
+	* Update papi.h to properly detect if being built with a C99 compiler.
+
+Enhancements:
+-------------
+	* Default support for libpfm4
+	* ./configure --with-libpfm3 to support legacy libpfm3 builds
+	* PERF_COUNT_SW software events are available under perf_events with 
+	  libpfm4
+	* Nehalem/Westmere/SandyBridge Offcore event support is ready, 
+	  but support is not yet available in the Linux kernel.
+	* Add new utility to display PAPI error codes and description strings.
+	* Add API to access error descriptions: PAPI_descr_error( int error_code).
+	* Add support for handling multiattach properly.
+	* Cleanups to avoid gcc-4.6 warnings.
+	* Added ability to add tests to components. All component tests are
+	  compiled with PAPI when typing 'make'and cleaned up with 'make clean' 
+	  or 'make clobber'. Also added tests to the example and cuda components.
+	* CUDA component is now thread-safe. Multiple CPU
+	  threads can access the same CUDA context. Note, it's possible to
+	  create a different CUDA context for each thread, but then we are
+	  likely running into a limitation that only one context can be
+	  profiled at a time.
+	* LOTS of code cleanup thanks to Will Cohen of RedHat.
+	* Refactored test code so no-cpu-counters can build with components
+	* Build all utilities with no-cpu-counters
+	* Modify run_tests.sh so that you can set the VALGRIND command 
+	  externally via environment variable without having to edit 
+	  run_tests.sh itself. Also adds Date and cpuinfo information to the 
+	  beginning of run_tests.sh results.  This can help when run_tests.sh 
+	  output is passed around when debugging a problem.
+	* Parallel make now works.
+	  
+New Platforms:
+-------------
+	* AMD Family 14h Bobcat (libpfm4 only)
+	* Intel SandyBridge (libpfm4 only)
+	* ARM Cortex-A8 and Cortex-A9 (libpfm4 only)
+	
+Deprecated Platforms:
+---------------------
+	* although still technically supported, we are no longer actively testing
+	  platforms based on the perfmon and perfctr patches. All linux kernels
+	  > 2.6.32 provide internal support for perf_events.
+	
+New / Improved Components:
+---------------
+	* Add a number of 'native' events to the component info structure in 
+	  example component.
+	* Introduce a papi_component_avail utility; lists the components we were
+	  built with, optionally with native/preset counts and version number.
+
+Open Issues:
+-------------
+	* On newer Linux kernels (2.6.34+) the nmi_watchdog counter can	steal one
+	  of the counters, reducing by one the total available.
+	  There's a bug in Linux where if you try to use the full number of
+	  counters on such a system with a group leader, the sys_perf_open()
+	  call will succeed only to fail at read time.
+	  (instead of the proper error code at open time).
+	  I do wish there were a way to notify the user more visibly,
+	  because losing a counter (when you might only have 4 total to
+	  begin with) is a big deal, and most Linux vendors are starting to
+	  ship kernels with the nmi_watchdog enabled.
+
+Experimental:
+-------------
+	* Preliminary support for MIPS 74K.
+
+===============================================================================
+PAPI 4.1.4 RELEASE NOTES                                            29 Aug 2011
+===============================================================================
+For specific and detailed information on changes made in this release, grep
+the ChangeLogP414.txt file for keywords of interest or go directly to the PAPI
+cvs tree.
+
+GENERAL NOTES
+===============================================================================
+This is an internal release of PAPI-C targetted specifically for a Cray tools
+release. It precedes a more general 4.2.0 release and incorporates changes and
+updates since PAPI 4.1.3.
+
+Detailed changes will be documented in the 4.2.0 release. Meanwhile the list
+below highlights the most significant changes since 4.1.3.
+
+	* Intel SandyBridge is now supported
+	* libpfm4 support has been updated
+	* internal doxygen documentation has been added for the entire API
+	* the man pages have been replaced with doxygen generated man pages
+	* CUDA component support has been improved
+	* an infrastructure for testing components only has been implemented
+	* various bugs have been addressed
+
+If you find issues with the 4.1.4 release, please bring them to our attention
+ASAP, so they can be addressed prior to the general 4.2.0 release.
+
+Visit the PAPI Reference pages for more information at:
+http://icl.cs.utk.edu/projects/papi/wiki/Main_Page
+And visit the PAPI website for the latest updates:
+http://icl.cs.utk.edu/papi/
+
+===============================================================================
+PAPI 4.1.3 RELEASE NOTES                                            06 May 2011
+===============================================================================
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP413.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -88,13 +552,6 @@ Known Bugs:
 ===============================================================================
 PAPI 4.1.2 RELEASE NOTES                                            20 Jan 2011
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP412.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -165,13 +622,6 @@ Known Bugs:
 ===============================================================================
 PAPI 4.1.1 RELEASE NOTES                                            01 Oct 2010
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP411.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -248,13 +698,6 @@ Known Bugs:
 ===============================================================================
 PAPI 4.1.0 RELEASE NOTES                                            22 Jun 2010
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP410.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -354,13 +797,6 @@ Known Bugs:
 ===============================================================================
 PAPI 4.0.0 RELEASE NOTES                                            19 Jan 2010
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP400.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -429,13 +865,6 @@ Known Bugs:
 ===============================================================================
 PAPI 3.7.2 RELEASE NOTES                                            02 Dec 2009
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP372.txt file for keywords of interest or go directly to the PAPI
 cvs tree.
@@ -549,13 +978,6 @@ Known Bugs:
 ===============================================================================
 PAPI 3.7.0 RELEASE NOTES                                            08 Sep 2009
 ===============================================================================
-
-This file documents changes in recent PAPI releases in inverse chronological
-order.
-
-For details on installing PAPI on your machine, consult the INSTALL.txt file
-in this directory.
-
 For specific and detailed information on changes made in this release, grep
 the ChangeLogP370.txt file for keywords of interest or go directly to the PAPI
 cvs tree.

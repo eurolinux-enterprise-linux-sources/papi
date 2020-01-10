@@ -4,7 +4,7 @@
 
 /* 
 * File:    map-unknown.h
-* CVS:     $Id: map-unknown.h,v 1.5 2010/04/15 18:32:42 bsheely Exp $
+* CVS:     $Id$
 * Author:  Harald Servat
 *          redcrash@gmail.com
 */

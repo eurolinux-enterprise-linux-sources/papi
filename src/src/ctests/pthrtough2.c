@@ -54,7 +54,10 @@ main( int argc, char *argv[] )
 	pthread_attr_setdetachstate( &attr, PTHREAD_CREATE_UNDETACHED );
 #endif
 #ifdef PTHREAD_SCOPE_SYSTEM
-	pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM );
+	ret = pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM );
+	if ( ret != 0 )
+	   test_skip( __FILE__, __LINE__, "pthread_attr_setscope", ret );
+
 #endif
 
 	nthr = NITER;
@@ -67,7 +70,7 @@ main( int argc, char *argv[] )
 		printf( "\tdestroy_eventset\n" );
 		printf( "\tunregister\n" );
 	}
-	th = ( pthread_t * ) malloc( ( size_t ) nthr * sizeof ( pthread_t * ) );
+	th = ( pthread_t * ) malloc( ( size_t ) nthr * sizeof ( pthread_t ) );
 	if ( th == NULL )
 		test_fail( __FILE__, __LINE__, "malloc", PAPI_ESYS );
 
@@ -81,7 +84,7 @@ main( int argc, char *argv[] )
 			nthr = j - 1;
 			th = ( pthread_t * ) realloc( th,
 										  ( size_t ) nthr *
-										  sizeof ( pthread_t * ) );
+										  sizeof ( pthread_t ) );
 			break;
 		}
 	}

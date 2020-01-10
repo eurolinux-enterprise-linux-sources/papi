@@ -1,26 +1,31 @@
 PAPI_SRCDIR = $(PWD)	
 CFLAGS += $(EXTRA_CFLAGS)
-SOURCES	  = $(MISCSRCS) papi.c papi_internal.c papi_hl.c extras.c multiplex.c \
-    papi_fwrappers.c papi_fwrappers_.c papi_fwrappers__.c PAPI_FWRAPPERS.c \
-    papi_data.c threads.c cpus.c $(MEMSUBSTR)-memory.c $(SUBSTR).c papi_preset.c \
-    papi_vector.c papi_memory.c freq.c $(COMPSRCS)
-OBJECTS = $(MISCOBJS) papi.o papi_internal.o papi_hl.o extras.o multiplex.o \
-    papi_fwrappers.o papi_fwrappers_.o papi_fwrappers__.o PAPI_FWRAPPERS.o \
-    papi_data.o threads.o cpus.o $(MEMSUBSTR)-memory.o $(SUBSTR).o papi_preset.o \
-    papi_vector.o papi_memory.o freq.o $(COMPOBJS) $(MISCOBJS)
-HEADERS   = $(MISCHDRS) papi.h papi_internal.h papiStdEventDefs.h $(SUBSTR).h \
-    papi_preset.h threads.h cpus.h papi_protos.h papi_vector.h \
-    papi_memory.h config.h
-LIBCFLAGS += -I. $(CFLAGS) -DSUBSTRATE=\"$(SUBSTR).h\" 
+SOURCES	  = $(MISCSRCS) papi.c papi_internal.c papi_hl.c extras.c sw_multiplex.c \
+    papi_fwrappers.c papi_fwrappers_.c papi_fwrappers__.c upper_PAPI_FWRAPPERS.c \
+    threads.c cpus.c $(OSFILESSRC) $(CPUCOMPONENT).c papi_preset.c \
+    papi_vector.c papi_memory.c papi_user_events.c $(COMPSRCS)
+OBJECTS = $(MISCOBJS) papi.o papi_internal.o papi_hl.o extras.o sw_multiplex.o \
+    papi_fwrappers.o papi_fwrappers_.o papi_fwrappers__.o upper_PAPI_FWRAPPERS.o \
+    threads.o cpus.o $(OSFILESOBJ) $(CPUCOMPONENT).o papi_preset.o \
+    papi_vector.o papi_memory.o papi_user_events.o $(COMPOBJS) $(MISCOBJS)
+HEADERS   = $(MISCHDRS) $(OSFILESHDR) papi.h papi_internal.h \
+	papiStdEventDefs.h\
+	papi_preset.h threads.h cpus.h papi_vector.h \
+	papi_memory.h config.h papi_user_events.h \
+	extras.h sw_multiplex.h papi_hl.h \
+	papi_common_strings.h components_config.h \
+	papi_events_table.h
+LIBCFLAGS += -I. $(CFLAGS) -DOSLOCK=\"$(OSLOCK)\" -DOSCONTEXT=\"$(OSCONTEXT)\"
 FHEADERS = fpapi.h f77papi.h f90papi.h
 
 all: $(SHOW_CONF) $(LIBS) utils tests
+.PHONY : all test fulltest tests testlib utils ctests ftests comp_tests null
 
 include $(COMPONENT_RULES)
 
 showconf:
-		@echo "Host architecture: $(DESCR)";
-		@echo "Host substrate   : $(SUBSTR).c"; 
+		@echo "Host architecture   : $(DESCR)";
+		@echo "Host CPU component  : $(CPUCOMPONENT).c"; 
 		@echo "Installation DESTDIR: $(DESTDIR)"; 
 		@echo "Installation PREFIX : $(PREFIX)"; 
 		@echo "Installation EPREFIX: $(EPREFIX)"; 
@@ -47,13 +52,13 @@ shared: $(SHLIB)
 
 $(LIBRARY): $(OBJECTS)
 	rm -f $(LIBRARY)
-	$(AR) $(ARG64) ruv $(LIBRARY) $(OBJECTS)
+	$(AR) $(ARG64) rv $(LIBRARY) $(OBJECTS)
 
-$(SHLIB): $(SOURCES) $(SHLIBOBJS) 
+$(SHLIB): $(HEADERS) $(SOURCES) $(SHLIBOBJS) 
 	@if test "$(SHLIB)" != "libpapi.so" ; then \
 	    rm -f $(SHLIB) libpapi.so; \
 	fi
-	$(CC_SHR) $(LIBCFLAGS) $(OPTFLAGS) $(SOURCES) $(SHLIBOBJS) -o $@ $(LDFLAGS) $(SHLIBDEPS) 
+	$(CC_SHR) $(LIBCFLAGS) $(OPTFLAGS) $(SOURCES) $(SHLIBOBJS) -o $@ $(SHLIBDEPS) $(LDFLAGS)
 	@if test "$(POST_BUILD)" != "" ; then \
 		-$(POST_BUILD) ; \
 	fi
@@ -67,8 +72,8 @@ papi_fwrappers_.c: papi_fwrappers.c $(HEADERS)
 papi_fwrappers__.c: papi_fwrappers.c $(HEADERS)
 	$(CPP) -DFORTRANDOUBLEUNDERSCORE papi_fwrappers.c > papi_fwrappers__.c
 
-PAPI_FWRAPPERS.c: papi_fwrappers.c $(HEADERS)
-	$(CPP) -DFORTRANCAPS papi_fwrappers.c > PAPI_FWRAPPERS.c
+upper_PAPI_FWRAPPERS.c: papi_fwrappers.c $(HEADERS)
+	$(CPP) -DFORTRANCAPS papi_fwrappers.c > upper_PAPI_FWRAPPERS.c
 
 papi_fwrappers.o: papi_fwrappers.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_fwrappers.c -o papi_fwrappers.o
@@ -79,17 +84,14 @@ papi_fwrappers_.o: papi_fwrappers_.c $(HEADERS)
 papi_fwrappers__.o: papi_fwrappers__.c $(HEADERS) 
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_fwrappers__.c -o papi_fwrappers__.o
 
-PAPI_FWRAPPERS.o: PAPI_FWRAPPERS.c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c PAPI_FWRAPPERS.c -o PAPI_FWRAPPERS.o
+upper_PAPI_FWRAPPERS.o: upper_PAPI_FWRAPPERS.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c upper_PAPI_FWRAPPERS.c -o upper_PAPI_FWRAPPERS.o
 
 papi.o: papi.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi.c -o papi.o 
 
 papi_internal.o: papi_internal.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_internal.c -o papi_internal.o 
-
-papi_data.o: papi_data.c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_data.c -o papi_data.o 
 
 threads.o: threads.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c threads.c -o threads.o 
@@ -100,8 +102,29 @@ cpus.o: cpus.c $(HEADERS)
 papi_hl.o: papi_hl.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_hl.c -o papi_hl.o 
 
-$(MEMSUBSTR)-memory.o: $(MEMSUBSTR)-memory.c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c $(MEMSUBSTR)-memory.c -o $(MEMSUBSTR)-memory.o
+aix-memory.o: aix-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c aix-memory.c -o aix-memory.o
+
+solaris-memory.o: solaris-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c solaris-memory.c -o solaris-memory.o
+
+solaris-common.o: solaris-common.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c solaris-common.c -o solaris-common.o
+
+linux-bgp-memory.o: linux-bgp-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c linux-bgp-memory.c -o linux-bgp-memory.o
+
+linux-bgq-memory.o: linux-bgq-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c linux-bgq-memory.c -o linux-bgq-memory.o
+
+darwin-memory.o: darwin-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c darwin-memory.c -o darwin-memory.o
+
+darwin-common.o: darwin-common.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c darwin-common.c -o darwin-common.o
+
+linux-memory.o: linux-memory.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c linux-memory.c -o linux-memory.o
 
 linux-timer.o: linux-timer.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c linux-timer.c -o linux-timer.o
@@ -118,41 +141,34 @@ papi_memory.o: papi_memory.c $(HEADERS)
 papi_vector.o: papi_vector.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_vector.c -o papi_vector.o
 
-papi_preset.o: papi_preset.c $(HEADERS)
+papi_preset.o: papi_preset.c $(HEADERS) $(PAPI_EVENTS_TABLE)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_preset.c -o papi_preset.o 
 
-multiplex.o: multiplex.c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c multiplex.c -o multiplex.o 
+sw_multiplex.o: sw_multiplex.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c sw_multiplex.c -o sw_multiplex.o 
 
-$(SUBSTR).o: $(SUBSTR).c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c $(SUBSTR).c -o $(SUBSTR).o 
+$(CPUCOMPONENT).o: $(CPUCOMPONENT).c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c $(CPUCOMPONENT).c -o $(CPUCOMPONENT).o 
 
-x86_cache_info.o: x86_cache_info.c $(HEADERS)
-	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c x86_cache_info.c -o x86_cache_info.o
+x86_cpuid_info.o: x86_cpuid_info.c x86_cpuid_info.h $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c x86_cpuid_info.c -o x86_cpuid_info.o
 
 sys_perf_event_open.o: sys_perf_event_open.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c sys_perf_event_open.c -o sys_perf_event_open.o
 
-$(PAPI_EVENTS_TABLE):	papi_events.csv papi_events_table.sh
-	sh papi_events_table.sh > $@
+$(PAPI_EVENTS_TABLE):	$(PAPI_EVENTS_CSV) papi_events_table.sh
+	sh papi_events_table.sh $(PAPI_EVENTS_CSV) > $@
 
 $(ARCH_EVENTS)_map.o: $(ARCH_EVENTS)_map.c  $(HEADERS)
 	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c $(ARCH_EVENTS)_map.c -o $(ARCH_EVENTS)_map.o
 
-# Required for AIX PowerPC configurations
-pmapi-ppc64_events.o: pmapi-ppc64_events.c  $(HEADERS) papi_events_table.h
-	$(CC) $(LIBCFLAGS) -DSUBSTRATE=\"$(SUBSTR).h\" $(OPTFLAGS) -c pmapi-ppc64_events.c -o pmapi-ppc64_events.o
-
-aix.o: aix.c  $(HEADERS)
-	$(CC) $(LIBCFLAGS) -DSUBSTRATE=\"$(SUBSTR).h\" $(OPTFLAGS) -c aix.c -o aix.o
+papi_user_events.o: papi_user_events.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) $(OPTFLAGS) -c papi_user_events.c -o papi_user_events.o
 
 # Required for BGP
 .SUFFIXES: .rts.o
 .c.rts.o:
 	$(CC) $(CFLAGS) -c $< -o $@
-
-linux-bgp-preset-events.o: linux-bgp-preset-events.c  $(HEADERS)
-	$(CC) $(LIBCFLAGS) -DSUBSTRATE=\"$(SUBSTR).h\" -DCOMP_VECTOR=_bgp_vectors $(OPTFLAGS) -c linux-bgp-preset-events.c -o linux-bgp-preset-events.o
 
 bgp_tests:$(LIBRARY) null
 	$(SETPATH) cd ctests/bgp; $(MAKE) CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. -I../.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY="../$(LINKLIB)" bgp_tests
@@ -206,10 +222,8 @@ freebsd/map-core2-extreme.o: freebsd/map-core2-extreme.c $(HEADERS)
 freebsd/map-i7.o: freebsd/map-i7.c $(HEADERS)
 	$(CC) $(LIBCFLAGS) -c $< -o $@
 
-# So we already build this for $SUBSTRATE
-#freebsd.o: freebsd.c $(HEADERS)
-#	$(CC) $(LIBCFLAGS) -c $< -o $@
-
+freebsd/map-westmere.o: freebsd/map-westmere.c $(HEADERS)
+	$(CC) $(LIBCFLAGS) -c $< -o $@                                          
 test: ctests
 	$(SETPATH) ctests/zero
 
@@ -218,38 +232,58 @@ fulltest: tests
 
 tests: $(TESTS) 
 
-utils: $(papiLIBS) null
+testlib:
+	$(SETPATH) cd testlib;  $(MAKE) CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" OPTFLAGS="$(OPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY="$(LINKLIB)"
+
+utils: $(LIBS)
 	$(SETPATH) cd utils; $(MAKE) CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" OPTFLAGS="$(OPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY="$(LINKLIB)" $(UTIL_TARGETS)
 
-ctests: $(papiLIBS) null
+ctests: $(LIBS) testlib
 	$(SETPATH) cd ctests; $(MAKE) CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS) $(DEBUGFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LDL="$(LDL)" LIBRARY="$(LINKLIB)" $(CTEST_TARGETS)
 
-ftests: $(papiLIBS) null
+ftests: $(LIBS) testlib
 	$(SETPATH) cd ftests; $(MAKE) CC="$(CC)" CC_R="$(CC_R)" F77="$(F77)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" FFLAGS="-I.. $(FFLAGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY="$(LINKLIB)" $(FTEST_TARGETS)
 
-doc:
-	-cd ../doc; $(MAKE) doxygen-user
+# compile tests added to components
+comp_tests:	$(LIBS) testlib
+ifneq (${COMPONENTS},)
+		@for comp in ${COMPONENTS} ; do \
+			$$comp_tests: $(LIBS) testlib null ; \
+			$(SETPATH) cd components/$$comp/tests ; $(MAKE) CC="$(CC)" CC_R="$(CC_R)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS) $(STATIC)" ; \
+			$(SETPATH) cd ../../.. ; done 
+endif
 
-clean: native_clean
-	-rm -rf $(LIBRARY) $(SHLIB) libpapi.so $(OBJECTS) core rii_files genpapifdef *~ so_locations papi_fwrappers_.c papi_fwrappers__.c PAPI_FWRAPPERS.c papi_events_table.h 
+clean: native_clean comp_tests_clean
+	-rm -rf $(LIBRARY) $(SHLIB) libpapi.so $(OBJECTS) core rii_files genpapifdef *~ so_locations papi_fwrappers_.c papi_fwrappers__.c upper_PAPI_FWRAPPERS.c 
 	-cd ctests; $(MAKE) clean
 	-cd ctests/bgp; $(MAKE) clean
 	-cd ftests; $(MAKE) clean
+	-cd testlib; $(MAKE) clean
 	-cd utils;  $(MAKE) clean
 	-cd ../doc; $(MAKE) clean
 
+# Component tests cleaning
+comp_tests_clean:
+ifneq (${COMPONENTS},)
+	@for comp in ${COMPONENTS} ; do \
+		cd components/$$comp/tests ; \
+		$(MAKE) clean ; \
+		cd ../../.. ; \
+	done 
+endif
+
 clobber distclean: clean native_clobber
-	-rm -f $(LIBRARY) $(SHLIB) $(EXTRALIBS) Makefile config.h libpapi.so components_config.h
+	-rm -f $(LIBRARY) $(SHLIB) $(EXTRALIBS) Makefile config.h libpapi.so components_config.h papi_events_table.h
 	-cd utils;  $(MAKE) clean
 	-rm -f config.log config.status f77papi.h f90papi.h fpapi.h
 
 null:
 
 dist: 
-	$(MAKE) install-all PREFIX=`pwd`/papi-$(SUBSTR)
-	tar cfv ./papi-$(SUBSTR).tar ./papi-$(SUBSTR)
-	gzip ./papi-$(SUBSTR).tar
-	rm -rf ./papi-$(SUBSTR)
+	$(MAKE) install-all PREFIX=`pwd`/papi-$(CPUCOMPONENT)
+	tar cfv ./papi-$(CPUCOMPONENT).tar ./papi-$(CPUCOMPONENT)
+	gzip ./papi-$(CPUCOMPONENT).tar
+	rm -rf ./papi-$(CPUCOMPONENT)
 
 install-all: install install-tests
 
@@ -271,15 +305,13 @@ install-lib: native_install
 	@if test -r $(SHLIB) ; then \
 		cp -p $(SHLIB) $(DESTDIR)$(LIBDIR)/libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC); \
 		chmod go+r $(DESTDIR)$(LIBDIR)/libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) ; \
+		cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE); \
 		cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) libpapi.so.$(PAPIVER); \
 		cd $(DESTDIR)$(LIBDIR); ln -sf libpapi.so.$(PAPIVER).$(PAPIREV).$(PAPIAGE).$(PAPIINC) libpapi.so; \
 	fi
 
-install-man: 
-	cd ../man && $(MAKE) DOCDIR=$(DESTDIR)$(DOCDIR) MANDIR=$(DESTDIR)$(MANDIR) install
-
-install-doxyman: doc
-	cd ../doc && $(MAKE) DOCDIR=$(DESTDIR)$(DOCDIR) MANDIR=$(DESTDIR)$(MANDIR) install
+install-man:  
+		cd ../man && $(MAKE) DOCDIR=$(DESTDIR)$(DOCDIR) MANDIR=$(DESTDIR)$(MANDIR) install; \
 
 install-utils: 
 	$(SETPATH) cd utils; $(MAKE) BINDIR="$(DESTDIR)$(BINDIR)" CC="$(CC)" CC_R="$(CC_R)" CFLAGS="-I.. $(CFLAGS)" TOPTFLAGS="$(TOPTFLAGS)" SMPCFLGS="$(SMPCFLGS)" OMPCFLGS="$(OMPCFLGS)" NOOPT="$(NOOPT)" LDFLAGS="$(LDFLAGS) $(STATIC)" LIBRARY=$(LINKLIB) install

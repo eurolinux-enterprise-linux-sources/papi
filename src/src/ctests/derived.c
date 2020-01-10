@@ -9,13 +9,15 @@
 #define CPP_TEST_PASS() { test_pass(__FILE__, NULL, 0); exit(0); }
 #define CPP_TEST_SKIP() { test_skip(__FILE__,__LINE__,NULL,0); exit(0); }
 #else
-#define CPP_TEST_FAIL(function, retval) { fprintf(stderr,"%s:%d:%s:%d:%s:%s\n",__FILE__,__LINE__,function,retval,PAPI_strerror(retval),"$Id: derived.c,v 1.24 2010/02/22 18:36:03 jagode Exp $\n"); test_fail(__FILE__, __LINE__, function, retval); }
-#define CPP_TEST_PASS() { fprintf(stderr,"$Id: derived.c,v 1.24 2010/02/22 18:36:03 jagode Exp $\n%s:\tPASSED\n",__FILE__); exit(0); }
-#define CPP_TEST_SKIP() { fprintf(stderr,"$Id: derived.c,v 1.24 2010/02/22 18:36:03 jagode Exp $\n%s:\tSKIPPED\n",__FILE__); exit(0); }
+#define CPP_TEST_FAIL(function, retval) { fprintf(stderr,"%s:%d:%s:%d:%s:%s\n",__FILE__,__LINE__,function,retval,PAPI_strerror(retval),"$Id$\n"); test_fail(__FILE__, __LINE__, function, retval); }
+#define CPP_TEST_PASS() { fprintf(stderr,"$Id$\n%s:\tPASSED\n",__FILE__); exit(0); }
+#define CPP_TEST_SKIP() { fprintf(stderr,"$Id$\n%s:\tSKIPPED\n",__FILE__); exit(0); }
 #endif
 
+#define EVENTSLEN 2
+
 #define QUIETPRINTF if (!TESTS_QUIET) printf
-unsigned int PAPI_events[PAPI_MPX_DEF_DEG] = { 0, 0 };
+unsigned int PAPI_events[EVENTSLEN] = { 0, 0 };
 static const int PAPI_events_len = 1;
 extern int TESTS_QUIET;
 

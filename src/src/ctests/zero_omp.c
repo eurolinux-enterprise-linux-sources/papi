@@ -1,6 +1,5 @@
 /* 
 * File:    zero_omp.c
-* CVS:     $Id: zero_omp.c,v 1.35 2010/02/22 18:36:04 jagode Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    Nils Smeds
@@ -46,7 +45,6 @@ Master serial thread:
 #error "This compiler does not understand OPENMP"
 #endif
 
-extern int TESTS_QUIET;				   /* Declared in test_utils.c */
 const PAPI_hw_info_t *hw_info = NULL;
 
 void
@@ -63,10 +61,11 @@ Thread( int n )
 	printf( "Thread 0x%x started\n", omp_get_thread_num(  ) );
 	num_events1 = 2;
 
-	/* add PAPI_TOT_CYC and one of the events in PAPI_FP_INS, PAPI_FP_OPS or
-	   PAPI_TOT_INS, depending on the availability of the event on the
-	   platform */
-	EventSet1 = add_two_events( &num_events1, &PAPI_event, hw_info, &mask1 );
+	/* add PAPI_TOT_CYC and one of the events in 
+	   PAPI_FP_INS, PAPI_FP_OPS or PAPI_TOT_INS, 
+	   depending on the availability of the event 
+	   on the platform */
+	EventSet1 = add_two_events( &num_events1, &PAPI_event, &mask1 );
 
 	retval = PAPI_event_code_to_name( PAPI_event, event_name );
 	if ( retval != PAPI_OK )
@@ -96,9 +95,9 @@ Thread( int n )
 
 	if ( !TESTS_QUIET ) {
 		printf( "Thread 0x%x %-12s : \t%lld\n", omp_get_thread_num(  ),
-				event_name, ( values[0] )[0] );
+				event_name, values[0][1] );
 		printf( "Thread 0x%x PAPI_TOT_CYC: \t%lld\n", omp_get_thread_num(  ),
-				( values[0] )[1] );
+				values[0][0] );
 		printf( "Thread 0x%x Real usec   : \t%lld\n", omp_get_thread_num(  ),
 				elapsed_us );
 		printf( "Thread 0x%x Real cycles : \t%lld\n", omp_get_thread_num(  ),
@@ -138,7 +137,7 @@ main( int argc, char **argv )
 		PAPI_thread_init( ( unsigned
 							long ( * )( void ) ) ( omp_get_thread_num ) );
 	if ( retval != PAPI_OK ) {
-		if ( retval == PAPI_ESBSTR )
+		if ( retval == PAPI_ECMP )
 			test_skip( __FILE__, __LINE__, "PAPI_thread_init", retval );
 		else
 			test_fail( __FILE__, __LINE__, "PAPI_thread_init", retval );

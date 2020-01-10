@@ -1,6 +1,6 @@
 /* 
 * File:    INSTALL.txt
-* CVS:     $Id: INSTALL.txt,v 1.55 2011/05/06 23:05:37 sbk Exp $
+* CVS:     $Id$
 * Author:  Kevin London
 *          london@cs.utk.edu
 * Mods:    Dan Terpstra
@@ -150,6 +150,20 @@ appear to work.
 The IBM RedPaper: http://www.redbooks.ibm.com/abstracts/redp4256.html provides
 further discussion about PAPI on BGP along with other performance issues.
 
+BG/Q
+*****************************************************************************
+Five new components have been added to PAPI to support hardware performance 
+monitoring for the BG/Q platform; in particular the BG/Q network, the I/O system,
+the Compute Node Kernel in addition to the processing core. There are no specific
+component configure scripts for L2unit, IOunit, NWunit, CNKunit. In order to
+configure PAPI for BG/Q, use the following configure options at the papi/src level:
+% ./configure --prefix=< your_choice >  \
+			  --with-OS=bgq  \
+			  --with-bgpm_installdir=/bgsys/drivers/ppcfloor  \
+			  CC=/bgsys/drivers/ppcfloor/gnu-linux/bin/powerpc64-bgq-linux-gcc  \
+			  F77=/bgsys/drivers/ppcfloor/gnu-linux/bin/powerpc64-bgq-linux-gfortran  \
+			  --with-components="bgpm/L2unit bgpm/CNKunit bgpm/IOunit bgpm/NWunit"
+
 CLE - Cray XT and XE Opteron
 *****************************************************************************
 The Cray XT/XE is a cross-compiled environment. You must specify the
@@ -227,6 +241,40 @@ Intel Pentium 4, AMD K7 (AMD Athlon) and AMD K8 (AMD Athlon64 / Opteron).
 
 FreeBSD 8 also adds support for Core/Core2/Core-i[357]/Atom processors.
 There is also a patch for FreeBSD 7/7.1 in http://wiki.freebsd.org/PmcTools
+
+Linux - Xeon Phi [MIC, KNC, Knight's Corner]
+*****************************************************************************
+Full PAPI support of the MIC card requires building a patched kernel and a
+cross-compilation toolchain from Intel.
+
+Patching Intel's Kernel for MIC
+-----------------------------------------------------------------------------
+* First download one of the KNC beta source trees from here
+	[http://software.intel.com/en-us/forums/topic/278102]
+* Make a directory called build and unpack gpl/package-full_src-k1om.tar.bz2
+	from the package you downloaded.
+* Untar gpl/package-cross-k1om.tar.bz2 into the same directory
+* Copy gpl/package-cross-k1om.tar.bz2 into the same directory
+* Go into the card/kernel directory and apply this patch: mic.patch11 (patch -p1
+< mic.patch11) [http://www.eece.maine.edu/~vweaver/projects/mic/mic.patch11]
+* Run intel-mic-gpl.sh build release. This takes a while, and uses a lot of disk
+	space!
+* Copy card/kernel/arch/x86/boot/bzImage to uos.img
+* Copy uos.img to /lib/firmware/mic/
+* Reboot the MIC card, and check the dmesg for "Perf" messages to verify the
+	setup.
+
+Building PAPI
+-----------------------------------------------------------------------------
+* Add build/usr/linux-k1om-4.7/bin or equivalent to your PATH so PAPI can find the
+	cross-build utils. (see above for instructions on acquiring the cross
+	compilation toolchain)
+* You will need to invoke configure with options:
+	> ./configure --with-mic --host=x86_64-k10m-linux
+
+	This sets up cross-compilation and sets options needed by PAPI.
+* Run make to build the library.
+
 
 Linux - Itanium II & Montecito
 *****************************************************************************
@@ -439,11 +487,7 @@ should be only used with caution. BEWARE OF WRONG COUNTER RESULTS!
 
 Windows XP/2000/Server 2003 - Intel Pentium III or AMD Athlon / Opteron
 *****************************************************************************
-PAPI 3.5 for Windows runs on Pentium III, Athlon and Opteron, for 
-Windows 2000, Windows XP and Windows Server 2003.
-
-Earlier versions of PAPI for Windows provided a self-installing executable.
-That is not the case with the current release.
+Please use PAPI 3.7 (http://icl.cs.utk.edu/projects/papi/downloads/papi-3.7.2.tar.gz)
 
 The Windows source tree comes with Microsoft Visual Studio Version 8 projects
 to build a graphical shell application, the PAPI library as a DLL, a kernel 

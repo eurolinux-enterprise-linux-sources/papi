@@ -1,6 +1,6 @@
 /* 
 * File:    multiplex.c
-* CVS:     $Id: multiplex2.c,v 1.38 2010/08/25 22:08:19 vweaver1 Exp $
+* CVS:     $Id$
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>
@@ -39,10 +39,18 @@ case1( void )
 	init_papi(  );
 	init_multiplex(  );
 
+#if 0
+	if ( PAPI_set_domain( PAPI_DOM_KERNEL ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_set_domain", retval );
+#endif
 	retval = PAPI_create_eventset( &EventSet );
 	if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_create_eventset", retval );
 
+#if 0
+	if ( PAPI_set_domain( PAPI_DOM_KERNEL ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_set_domain", retval );
+#endif
 	/* In Component PAPI, EventSets must be assigned a component index
 	   before you can fiddle with their internals.
 	   0 is always the cpu component */
@@ -50,6 +58,10 @@ case1( void )
 	if ( retval != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_assign_eventset_component",
 				   retval );
+#if 0
+	if ( PAPI_set_domain( PAPI_DOM_KERNEL ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_set_domain", retval );
+#endif
 
 	retval = PAPI_set_multiplex( EventSet );
         if ( retval == PAPI_ENOSUPP) {
@@ -62,6 +74,11 @@ case1( void )
 	if ( max_mux > 32 )
 		max_mux = 32;
 
+#if 0
+	if ( PAPI_set_domain( PAPI_DOM_KERNEL ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_set_domain", retval );
+#endif
+
 	/* Fill up the event set with as many non-derived events as we can */
 	printf
 		( "\nFilling the event set with as many non-derived events as we can...\n" );
@@ -71,8 +88,10 @@ case1( void )
 		if ( PAPI_get_event_info( i, &pset ) == PAPI_OK ) {
 			if ( pset.count && ( strcmp( pset.derived, "NOT_DERIVED" ) == 0 ) ) {
 				retval = PAPI_add_event( EventSet, ( int ) pset.event_code );
-				if ( retval != PAPI_OK )
-					test_fail( __FILE__, __LINE__, "PAPI_add_event", retval );
+				if ( retval != PAPI_OK ) {
+				   printf("Failed trying to add %s\n",pset.symbol);
+				   break;
+				}
 				else {
 					printf( "Added %s\n", pset.symbol );
 					j++;
@@ -92,6 +111,11 @@ case1( void )
 
 	do_stuff(  );
 
+#if 0
+	if ( PAPI_set_domain( PAPI_DOM_KERNEL ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_set_domain", retval );
+#endif
+	
 	if ( PAPI_start( EventSet ) != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_start", retval );
 

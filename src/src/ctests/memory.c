@@ -12,11 +12,7 @@
 
 #include "papi_test.h"
 
-#if defined(_WIN32)
-#define OUT_FMT		"%12d\t%12I64d\t%12I64d\t%.2f\n"
-#else
 #define OUT_FMT		"%12d\t%12lld\t%12lld\t%.2f\n"
-#endif
 
 
 int
@@ -153,9 +149,10 @@ main( int argc, char **argv )
 	}
 
 	for ( i = 0; eventlist[i] != 0; i++ ) {
-		PAPI_event_code_to_name( eventlist[i], descr );
+	        if (PAPI_event_code_to_name( eventlist[i], descr ) != PAPI_OK)
+	           continue;
 		if ( PAPI_add_event( EventSet, eventlist[i] ) != PAPI_OK )
-			continue;
+		   continue;
 
 		if ( PAPI_get_event_info( eventlist[i], &evinfo ) != PAPI_OK )
 			test_fail( __FILE__, __LINE__, "PAPI_get_event_info", retval );

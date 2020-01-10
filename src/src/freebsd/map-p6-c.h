@@ -4,7 +4,7 @@
 
 /* 
 * File:    map-p6.h
-* CVS:     $Id: map-p6-c.h,v 1.5 2010/04/15 18:32:42 bsheely Exp $
+* CVS:     $Id$
 * Author:  Harald Servat
 *          redcrash@gmail.com
 */

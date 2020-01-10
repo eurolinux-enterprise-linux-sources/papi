@@ -1,96 +1,102 @@
-.\" $Id: PAPI_state.3,v 1.10 2004/09/27 19:41:09 london Exp $
-.TH PAPI_state 3 "September, 2004" "PAPI Programmer's Reference" "PAPI"
-
+.TH "PAPI_state" 3 "Tue May 21 2013" "Version 5.1.1.0" "PAPI" \" -*- nroff -*-
+.ad l
+.nh
 .SH NAME
-PAPI_state \- return the counting state of an EventSet
+PAPI_state \- 
+.PP
+Return the counting state of an EventSet.  
 
 .SH SYNOPSIS
-.B C Interface
+.br
+.PP
+.SH "Detailed Description"
+.PP 
+\fBC Interface:\fP
+.RS 4
+#include <\fBpapi.h\fP> 
+.br
+ int PAPI_state( int  EventSet, int * status );
+.RE
+.PP
+\fBParameters:\fP
+.RS 4
+\fIEventSet\fP -- an integer handle for a PAPI event set as created by \fBPAPI_create_eventset\fP 
+.br
+\fIstatus\fP -- an integer containing a boolean combination of one or more of the following nonzero constants as defined in the PAPI header file \fBpapi.h\fP: 
+.PD 0
+
+.IP "\(bu" 2
+PAPI_STOPPED -- EventSet is stopped 
+.IP "\(bu" 2
+PAPI_RUNNING -- EventSet is running 
+.IP "\(bu" 2
+PAPI_PAUSED -- EventSet temporarily disabled by the library 
+.IP "\(bu" 2
+PAPI_NOT_INIT -- EventSet defined, but not initialized 
+.IP "\(bu" 2
+PAPI_OVERFLOWING -- EventSet has overflowing enabled 
+.IP "\(bu" 2
+PAPI_PROFILING -- EventSet has profiling enabled 
+.IP "\(bu" 2
+PAPI_MULTIPLEXING -- EventSet has multiplexing enabled 
+.IP "\(bu" 2
+PAPI_ACCUMULATING -- reserved for future use 
+.IP "\(bu" 2
+PAPI_HWPROFILING -- reserved for future use  
+  
+.PP
+.RE
+.PP
+\fBReturn values:\fP
+.RS 4
+\fIPAPI_OK\fP 
+.br
+\fIPAPI_EINVAL\fP One or more of the arguments is invalid. 
+.br
+\fIPAPI_ENOEVST\fP The EventSet specified does not exist.  
+  
+.RE
+.PP
+PAPI_state() returns the counting state of the specified event set.  
+  
+.PP
+\fBExample:\fP
+.RS 4
+
+.PP
 .nf
-.B #include <papi.h>
-.BI "int\ PAPI_state (int " EventSet ", int *" status ");"
+  int EventSet = PAPI_NULL;
+  int status = 0;
+  int ret;
+  
+  ret = PAPI_create_eventset(&EventSet);
+  if (ret != PAPI_OK) handle_error(ret);
+  
+  // Add Total Instructions Executed to our EventSet
+  ret = PAPI_add_event(EventSet, PAPI_TOT_INS);
+  if (ret != PAPI_OK) handle_error(ret);
+  
+  // Start counting
+  ret = PAPI_state(EventSet, &status);
+  if (ret != PAPI_OK) handle_error(ret);
+  printf('State is now %d\n',status);
+  ret = PAPI_start(EventSet);
+  if (ret != PAPI_OK) handle_error(ret);
+  ret = PAPI_state(EventSet, &status);
+  if (ret != PAPI_OK) handle_error(ret);
+  printf('State is now %d\n',status);
+
 .fi
-.B Fortran Interface
-.nf
-.B #include "fpapi.h"
-.BI PAPIF_state(C_INT\  EventSet,\  C_INT\  status,\  C_INT\  check )
-.fi
+.PP
+.RE
+.PP
+\fBSee also:\fP
+.RS 4
+\fBPAPI_stop\fP \fBPAPI_start\fP 
+.RE
+.PP
 
-.SH DESCRIPTION
-.B PAPI_state() 
-returns the counting state of the specified event set.
 
-.SH ARGUEMENTS
-.I "EventSet"
---  an integer handle for a PAPI event set as created by
-.BR "PAPI_create_eventset" (3)
-.LP
-.I status
--- an integer containing a boolean combination of 
-one or more of the following nonzero constants as 
-defined in the PAPI header file papi.h:
-
-.TS
-allbox tab($);
-lB l.
-PAPI_STOPPED$EventSet is stopped
-PAPI_RUNNING$EventSet is running
-PAPI_PAUSED$EventSet temporarily disabled by the library
-PAPI_NOT_INIT$EventSet defined, but not initialized
-PAPI_OVERFLOWING$EventSet has overflowing enabled
-PAPI_PROFILING$EventSet has profiling enabled
-PAPI_MULTIPLEXING$EventSet has multiplexing enabled
-PAPI_ACCUMULATING$reserved for future use
-PAPI_HWPROFILING$reserved for future use
-.TE
-
-.SH RETURN VALUES
-On success, this function returns
-.B "PAPI_OK."
- On error, a non-zero error code is returned.
-
-.SH ERRORS
-.TP
-.B "PAPI_EINVAL"
-One or more of the arguments is invalid.
-.TP
-.B "PAPI_ENOEVST"
-The EventSet specified does not exist.
-
-.SH EXAMPLES
-.nf         
-.if t .ft CW
-int EventSet = PAPI_NULL;
-int status = 0;  
-
-if (PAPI_create_eventset(&EventSet) != PAPI_OK)
-  handle_error(1);
-
-/* Add Total Instructions Executed to our EventSet */
-
-if (PAPI_add_event(EventSet, PAPI_TOT_INS) != PAPI_OK)
-  handle_error(1);
-
-/* Start counting */
-
-if (PAPI_state(EventSet, &status) != PAPI_OK)
-  handle_error(1);
-
-printf("State is now %d\en",status);
-
-if (PAPI_start(EventSet) != PAPI_OK)
-  handle_error(1);
-
-if (PAPI_state(EventSet, &status) != PAPI_OK)
-  handle_error(1);
-
-printf("State is now %d\en",status);
-.if t .ft P
-.fi
-
-.SH BUGS
-This function has no known bugs.
-
-.SH SEE ALSO
-.BR PAPI_start "(3), " 
-.BR PAPI_stop "(3) "
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for PAPI from the source code.

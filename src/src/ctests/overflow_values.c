@@ -1,6 +1,6 @@
 /* 
 * File:    overflow_values.c
-* CVS:     $Id: overflow_values.c,v 1.4 2010/02/22 18:36:03 jagode Exp $
+* CVS:     $Id$
 * Author:  Harald Servat
 *          harald@cepba.upc.edu
 * Mods:    <your name here>
@@ -80,7 +80,7 @@ main( int argc, char *argv[] )
 	printf( "Architecture %s, %d\n", hwinfo->model_string, hwinfo->model );
 
 /* processing exceptions is a pain */
-#if ((defined(linux) && (defined(__i386__) || (defined __x86_64__))) || defined(_WIN32))
+#if ((defined(linux) && (defined(__i386__) || (defined __x86_64__))) )
 	if ( !strncmp( hwinfo->model_string, "Intel Pentium 4", 15 ) ) {
 		evt3 = PAPI_L2_TCM;
 	} else if ( !strncmp( hwinfo->model_string, "AMD K7", 6 ) ) {

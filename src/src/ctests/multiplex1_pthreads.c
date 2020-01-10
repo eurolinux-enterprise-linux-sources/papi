@@ -1,6 +1,5 @@
 /* 
 * File:    multiplex1_pthreads.c
-* CVS:     $Id: multiplex1_pthreads.c,v 1.56 2011/03/09 20:28:33 vweaver1 Exp $
 * Author:  Philip Mucci
 *          mucci@cs.utk.edu
 * Mods:    <your name here>
@@ -12,16 +11,18 @@
 #include <pthread.h>
 #include "papi_test.h"
 
-int solaris_preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
+#define TOTAL_EVENTS 10
+
+int solaris_preset_PAPI_events[TOTAL_EVENTS] = {
   PAPI_BR_MSP, PAPI_TOT_CYC, PAPI_L2_TCM, PAPI_L1_ICM, 0
 };
-int power6_preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
+int power6_preset_PAPI_events[TOTAL_EVENTS] = {
 	PAPI_FP_INS, PAPI_TOT_CYC, PAPI_L1_DCM, PAPI_L1_ICM, 0
 };
-int preset_PAPI_events[PAPI_MPX_DEF_DEG] = {
+int preset_PAPI_events[TOTAL_EVENTS] = {
 	PAPI_FP_INS, PAPI_TOT_INS, PAPI_L1_DCM, PAPI_L1_ICM, 0
 };
-static int PAPI_events[PAPI_MPX_DEF_DEG] = { 0, };
+static int PAPI_events[TOTAL_EVENTS] = { 0, };
 static int PAPI_events_len = 0;
 
 #define CPP_TEST_FAIL(string, retval) test_fail(__FILE__, __LINE__, string, retval)
@@ -66,7 +67,7 @@ init_papi_pthreads( int *out_events, int *len )
 		   PAPI_thread_init( ( unsigned
 							   long ( * )( void ) ) ( pthread_self ) ) ) !=
 		 PAPI_OK ) {
-		if ( retval == PAPI_ESBSTR )
+		if ( retval == PAPI_ECMP )
 			test_skip( __FILE__, __LINE__, "PAPI_thread_init", retval );
 		else
 			test_fail( __FILE__, __LINE__, "PAPI_thread_init", retval );
@@ -167,7 +168,10 @@ case1_pthreads( void *arg )
 
 	if ( ( retval = PAPI_cleanup_eventset( EventSet ) ) != PAPI_OK )	/* JT */
 		test_fail( __FILE__, __LINE__, "PAPI_cleanup_eventset", retval );
-
+	
+	if ( ( retval = PAPI_destroy_eventset( &EventSet) ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_destroy_eventset", retval );
+	
 	if ( ( retval = PAPI_unregister_thread(  ) ) != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_unregister_thread", retval );
 
@@ -235,6 +239,9 @@ case2_pthreads( void *arg )
 	if ( ( retval = PAPI_cleanup_eventset( EventSet ) ) != PAPI_OK )	/* JT */
 		test_fail( __FILE__, __LINE__, "PAPI_cleanup_eventset", retval );
 
+	if ( ( retval = PAPI_destroy_eventset( &EventSet) ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_destroy_eventset", retval );
+	
 	if ( ( retval = PAPI_unregister_thread(  ) ) != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_unregister_thread", retval );
 
@@ -293,6 +300,9 @@ case3_pthreads( void *arg )
 	if ( ( retval = PAPI_cleanup_eventset( EventSet ) ) != PAPI_OK )	/* JT */
 		test_fail( __FILE__, __LINE__, "PAPI_cleanup_eventset", retval );
 
+	if ( ( retval = PAPI_destroy_eventset( &EventSet) ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_destroy_eventset", retval );
+	
 	if ( ( retval = PAPI_unregister_thread(  ) ) != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_unregister_thread", retval );
 
@@ -356,6 +366,9 @@ case4_pthreads( void *arg )
 	if ( ( retval = PAPI_cleanup_eventset( EventSet ) ) != PAPI_OK )	/* JT */
 		test_fail( __FILE__, __LINE__, "PAPI_cleanup_eventset", retval );
 
+	if ( ( retval = PAPI_destroy_eventset( &EventSet) ) != PAPI_OK )
+		test_fail( __FILE__, __LINE__, "PAPI_destroy_eventset", retval );
+	
 	if ( ( retval = PAPI_unregister_thread(  ) ) != PAPI_OK )
 		test_fail( __FILE__, __LINE__, "PAPI_unregister_thread", retval );
 
@@ -425,6 +438,8 @@ case4( void )
 int
 main( int argc, char **argv )
 {
+  int retval;
+
 	tests_quiet( argc, argv );	/* Set TESTS_QUIET variable */
 
 	printf( "%s: Using %d threads\n\n", argv[0], NUM_THREADS );
@@ -446,7 +461,10 @@ main( int argc, char **argv )
 	if ( case4(  ) != SUCCESS )
 		test_fail( __FILE__, __LINE__, "case4", PAPI_ESYS );
 
-	PAPI_library_init( PAPI_VER_CURRENT );
+	retval = PAPI_library_init( PAPI_VER_CURRENT );
+	if ( retval != PAPI_VER_CURRENT )
+		CPP_TEST_FAIL( "PAPI_library_init", retval );
+
 	test_pass( __FILE__, NULL, 0 );
 	exit( 1 );
 }

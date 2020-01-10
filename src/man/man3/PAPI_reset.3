@@ -1,58 +1,79 @@
-.\" $Id: PAPI_reset.3,v 1.13 2004/10/04 02:16:26 jthomas Exp $
-.TH PAPI_reset 3 "September, 2004" "PAPI Programmer's Reference" "PAPI"
-
+.TH "PAPI_reset" 3 "Tue May 21 2013" "Version 5.1.1.0" "PAPI" \" -*- nroff -*-
+.ad l
+.nh
 .SH NAME
-PAPI_reset \- reset the hardware event counts in an event set
+PAPI_reset \- 
+.PP
+Reset the hardware event counts in an event set.  
 
 .SH SYNOPSIS
-.B C Interface
+.br
+.PP
+.SH "Detailed Description"
+.PP 
+\fBC Prototype:\fP
+.RS 4
+#include <\fBpapi.h\fP> 
+.br
+ int PAPI_reset( int EventSet );
+.RE
+.PP
+\fBParameters:\fP
+.RS 4
+\fIEventSet\fP an integer handle for a PAPI event set as created by \fBPAPI_create_eventset\fP
+.RE
+.PP
+\fBReturn values:\fP
+.RS 4
+\fIPAPI_OK\fP 
+.br
+\fIPAPI_ESYS\fP A system or C library call failed inside PAPI, see the errno variable. 
+.br
+\fIPAPI_ENOEVST\fP The EventSet specified does not exist.
+.RE
+.PP
+PAPI_reset() zeroes the values of the counters contained in EventSet. This call assumes an initialized PAPI library and a properly added event set
+.PP
+\fBExample:\fP
+.RS 4
+
+.PP
 .nf
-.B #include <papi.h>
-.BI "int\ PAPI_reset (int " EventSet ");"
+int EventSet = PAPI_NULL;
+int Events[] = {PAPI_TOT_INS, PAPI_FP_OPS};
+int ret;
+ 
+// Create an empty EventSet
+ret = PAPI_create_eventset(&EventSet);
+if (ret != PAPI_OK) handle_error(ret);
+
+// Add two events to our EventSet
+ret = PAPI_add_events(EventSet, Events, 2);
+if (ret != PAPI_OK) handle_error(ret);
+
+// Start counting
+ret = PAPI_start(EventSet);
+if (ret != PAPI_OK) handle_error(ret);
+
+// Stop counting, ignore values
+ret = PAPI_stop(EventSet, NULL);
+if (ret != PAPI_OK) handle_error(ret);
+
+// reset the counters in this EventSet
+ret = PAPI_reset(EventSet);
+if (ret != PAPI_OK) handle_error(ret);
+
 .fi
-.B Fortran Interface
-.nf
-.B #include "fpapi.h"
-.BI PAPIF_reset(C_INT\  EventSet,\  C_INT\  check )
-.fi
+.PP
+.RE
+.PP
+\fBSee also:\fP
+.RS 4
+\fBPAPI_create_eventset\fP 
+.RE
+.PP
 
-.SH DESCRIPTION
-.B PAPI_reset()
-zeroes the values of the counters contained in 
-.IR EventSet "."
-This call assumes an initialized PAPI library and
-a properly added event set.
 
-.SH ARGUMENTS
-.I "EventSet"
---  an integer handle for a PAPI event set as created by
-.BR "PAPI_create_eventset" (3)
-
-.SH RETURN VALUES
-On success, this function returns
-.B "PAPI_OK."
- On error, a non-zero error code is returned.
-
-.SH ERRORS
-.TP
-.B "PAPI_ESYS"
-A system or C library call failed inside PAPI, see the 
-.I "errno"
-variable.
-.TP
-.B "PAPI_ENOEVST"
-The EventSet specified does not exist.
-
-.SH EXAMPLES
-.nf         
-.if t .ft CW
-if (PAPI_reset(EventSet) != PAPI_OK)
-  handle_error(1);
-.if t .ft P
-.fi
-
-.SH BUGS
-This function has no known bugs.
-
-.SH SEE ALSO
-.BR PAPI_create_eventset "(3), " PAPI "(3)," PAPIF "(3)"
+.SH "Author"
+.PP 
+Generated automatically by Doxygen for PAPI from the source code.
