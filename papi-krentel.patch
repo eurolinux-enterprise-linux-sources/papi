@@ -1,0 +1,71 @@
+commit 71e6e5e52d7205a6a792bf9b754550a8719db6b1
+Author: Asim YarKhan <yarkhan@icl.utk.edu>
+Date:   Wed Feb 25 12:17:40 2015 -0500
+
+    Sync thread exit in krental_threads.c
+    
+    Thanks to William Cohen for this patch and to Phil Mucci for approving it.
+    
+    William Cohnen and Michael Petlan noticed that this test can have
+    threads dangling after the main thread is done.  This patch tracks the
+    created threads and ensures that they are joined before the code
+    exits.
+    
+    Note: There is still some problem remaining. For example, the following
+    test will sometimes (maybe 1 of 10 runs) generate an error message.
+    > ./ctests/krentel_pthreads 8 2000 10
+    ....
+    [10] time = 8, count = 38110, iter = 20, rate = 1905500.0/Kiter
+    PAPI Error: thread->running_eventset == NULL in _papi_pe_dispatch_timer for fd 14!.
+    [0] time = 8, count = 38161, iter = 20, rate = 1908050.0/Kiter
+    krentel_pthreads.c               PASSED
+
+diff --git a/src/ctests/krentel_pthreads.c b/src/ctests/krentel_pthreads.c
+index 2417976..9fa3e25 100644
+--- a/src/ctests/krentel_pthreads.c
++++ b/src/ctests/krentel_pthreads.c
+@@ -143,7 +143,7 @@ my_thread( void *v )
+ int
+ main( int argc, char **argv )
+ {
+-	pthread_t td;
++	pthread_t *td = NULL;
+ 	long n;
+ 
+ 	tests_quiet( argc, argv );	/*Set TESTS_QUIET variable */
+@@ -155,6 +155,10 @@ main( int argc, char **argv )
+ 	if ( argc < 4 || sscanf( argv[3], "%d", &num_threads ) < 1 )
+ 		num_threads = 3;
+ 
++	td = malloc((num_threads+1) * sizeof(pthread_t));
++	if (!td)
++		test_fail( __FILE__, __LINE__, "td malloc failed", 1 );
++
+ 	printf( "program_time = %d, threshold = %d, num_threads = %d\n\n",
+ 			program_time, threshold, num_threads );
+ 
+@@ -171,15 +175,22 @@ main( int argc, char **argv )
+ 	gettimeofday( &start, NULL );
+ 
+ 	for ( n = 1; n <= num_threads; n++ ) {
+-		if ( pthread_create( &td, NULL, my_thread, ( void * ) n ) != 0 )
++		if ( pthread_create( &(td[n]), NULL, my_thread, ( void * ) n ) != 0 )
+ 			test_fail( __FILE__, __LINE__, "pthread create failed", 1 );
+ 	}
+ 
+ 	my_thread( ( void * ) 0 );
+ 
++	/* wait for all the threads */
++	for ( n = 1; n <= num_threads; n++ ) {
++	  	if ( pthread_join( td[n], NULL))
++			test_fail( __FILE__, __LINE__, "pthread join failed", 1 );
++	}
++
++	free(td);
++
+ 	printf( "done\n" );
+ 
+ 	test_pass( __FILE__, NULL, 0 );
+-	pthread_exit( NULL );
+ 	return ( 0 );
+ }

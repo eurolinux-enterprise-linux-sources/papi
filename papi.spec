@@ -5,7 +5,7 @@
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.1.1
-Release: 11%{?dist}
+Release: 12%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -23,6 +23,7 @@ Patch400: papi-libpfm4-update.patch
 Patch401: papi-events-csv.patch
 Patch410: papi5-pkgconfig.patch
 Patch411: papi5-haswell-l1tcm.patch
+Patch700: papi-krentel.patch
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires: autoconf
 BuildRequires: ncurses-devel
@@ -91,6 +92,7 @@ popd
 %patch401 -p1
 %patch410 -p1
 %patch411 -p1
+%patch700 -p1
 
 %build
 %if %{without bundled_libpfm}
@@ -228,6 +230,9 @@ rm -rf $RPM_BUILD_ROOT
 %{papidir}/usr/lib/*.a
 
 %changelog
+* Mon Sep 19 2016 William Cohen <wcohen@redhat.com> - 5.1.1-12
+- Correct krentel test. rhbz1303882
+
 * Fri Apr 17 2015 William Cohen <wcohen@redhat.com> - 5.1.1-11
 - rhbz831752 correct haswell PAPI_L1_TCM preset.
 
