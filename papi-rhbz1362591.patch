@@ -1,0 +1,20 @@
+commit e9347373c8b18b5a2902e63dd5fd9df3e54f3216
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Mon Nov 18 10:39:42 2013 -0500
+
+    ctests/Makefile: Don't clobber value of LIBRARY
+    
+    TOOD: write a better message
+
+diff --git a/src/ctests/Makefile b/src/ctests/Makefile
+index 0526555..5dba43b 100644
+--- a/src/ctests/Makefile
++++ b/src/ctests/Makefile
+@@ -1,6 +1,6 @@
+ # File: ctests/Makefile
+ INCLUDE = -I.. -I. -I../testlib
+-PAPILIB = ../libpapi.a
++PAPILIB=$(LIBRARY)
+ CC	= gcc
+ CC_R	= $(CC) -pthread
+ CFLAGS	= -g -O -Wall

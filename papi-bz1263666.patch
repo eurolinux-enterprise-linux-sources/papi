@@ -1,0 +1,50 @@
+commit ba5ef24a0c27c667a7de6d40eb396aeaa0f1cc41
+Author: Asim YarKhan <yarkhan@icl.utk.edu>
+Date:   Wed Oct 22 13:35:43 2014 -0400
+
+    PPC64, fix L1 data cache read, write and all access equations.
+    
+    Thanks to Carl Love for this patch and the following documentation:
+    
+    The current POWER 7 equations for all accesses over counts because it
+    includes non load accesses to the cache.  The equation was changed to
+    be the sum of the reads and the writes.  The read accesses to the two
+    units, can be counted with the single event PM_LD_REF_L1 rather then
+    counting the events to the two LSU units independently.  The number of
+    reads to the L1 must be adjusted by subtracting the misses as these
+    become writes.
+    
+    Power 8 has four LSU units. The same equations can be used since
+    PM_LD_REF_L1 counts across all four LSU units.
+
+diff --git a/src/papi_events.csv b/src/papi_events.csv
+index 73a72e7..d27a41d 100644
+--- a/src/papi_events.csv
++++ b/src/papi_events.csv
+@@ -1307,10 +1307,9 @@ CPU,power7
+ PRESET,PAPI_L1_DCM,DERIVED_ADD,PM_LD_MISS_L1,PM_ST_MISS_L1
+ PRESET,PAPI_L1_LDM,NOT_DERIVED,PM_LD_MISS_L1
+ PRESET,PAPI_L1_STM,NOT_DERIVED,PM_ST_MISS_L1
+-PRESET,PAPI_L1_DCW,DERIVED_POSTFIX,N0|N1|-|,PM_ST_FIN,PM_ST_MISS_L1
+-PRESET,PAPI_L1_DCA,NOT_DERIVED,PM_LSU_FIN
+-#PRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|-|N2|+|,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1
+-PRESET,PAPI_L1_DCR,DERIVED_ADD,PM_LD_REF_L1_LSU0,PM_LD_REF_L1_LSU1
++PRESET,PAPI_L1_DCW,DERIVED_SUB,PM_ST_FIN,PM_ST_MISS_L1
++PRESET,PAPI_L1_DCR,DERIVED_SUB,PM_LD_REF_L1,PM_LD_MISS_L1
++PRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|+|N2|+|N3|+,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1,PM_LD_MISS_L1
+ PRESET,PAPI_L2_DCM,NOT_DERIVED,PM_DATA_FROM_L2MISS
+ PRESET,PAPI_L2_LDM,NOT_DERIVED,PM_L2_LD_MISS
+ PRESET,PAPI_L2_STM,NOT_DERIVED,PM_L2_ST_MISS
+@@ -1357,9 +1356,9 @@ CPU,power8
+ PRESET,PAPI_L1_DCM,DERIVED_ADD,PM_LD_MISS_L1,PM_ST_MISS_L1
+ PRESET,PAPI_L1_LDM,NOT_DERIVED,PM_LD_MISS_L1
+ PRESET,PAPI_L1_STM,NOT_DERIVED,PM_ST_MISS_L1
+-PRESET,PAPI_L1_DCW,DERIVED_POSTFIX,N0|N1|-|,PM_ST_FIN,PM_ST_MISS_L1
+-#n/aPRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|-|N2|+|,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1
+-#n/aPRESET,PAPI_L1_DCR,DERIVED_ADD,PM_LD_REF_L1_LSU0,PM_LD_REF_L1_LSU1
++PRESET,PAPI_L1_DCW,DERIVED_SUB,PM_ST_FIN,PM_ST_MISS_L1
++PRESET,PAPI_L1_DCR,DERIVED_SUB,PM_LD_REF_L1,PM_LD_MISS_L1
++PRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|+|N2|+|N3|+,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1,PM_LD_MISS_L1
+ PRESET,PAPI_L2_DCM,NOT_DERIVED,PM_DATA_FROM_L2MISS
+ #n/aPRESET,PAPI_L2_LDM,NOT_DERIVED,PM_L2_LD_MISS
+ #n/aPRESET,PAPI_L2_STM,NOT_DERIVED,PM_L2_ST_MISS

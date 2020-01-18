@@ -1,0 +1,73 @@
+commit 547f44124e1a38b8c5c635f673d88054ce6ff0d3
+Author: Asim YarKhan <yarkhan@icl.utk.edu>
+Date:   Thu Oct 16 12:19:34 2014 -0400
+
+    byte_profile.c: PPC64 add support for PPC64 Little Endian to byte_profile.c
+    
+    Thanks to Carl Love for this patch and the following description:
+    The POWER 8 platform is Little Endian.  It uses ELF
+    version 2 which does not use function descriptors.  This
+    patch adds the needed #ifdef support to correctly compile
+    the test case for Big Endian or Little Endian.
+    
+    This patch is untested by the PAPI developers (hardware not easily accessible).
+
+diff --git a/src/ctests/byte_profile.c b/src/ctests/byte_profile.c
+index 0f33c0d..f693e9f 100644
+--- a/src/ctests/byte_profile.c
++++ b/src/ctests/byte_profile.c
+@@ -213,9 +213,14 @@ main( int argc, char **argv )
+ /* Itanium and PowerPC64 processors return function descriptors instead
+  * of function addresses. You must dereference the descriptor to get the address.
+ */
+-#if defined(ITANIUM1) || defined(ITANIUM2) || defined(__powerpc64__)
++#if defined(ITANIUM1) || defined(ITANIUM2) \
++    || (defined(__powerpc64__) && (_CALL_ELF != 2))
+ 	start = ( caddr_t ) ( ( ( struct fdesc * ) start )->ip );
+ 	end = ( caddr_t ) ( ( ( struct fdesc * ) end )->ip );
++        /* PPC64 Big Endian is ELF version 1 which uses function descriptors.
++         *  PPC64 Little Endian is ELF version 2 which does not use
++         * function descriptors
++         */
+ #endif
+ 
+ 	/* call dummy so it doesn't get optimized away */
+commit 14f70ebc77deaad4a3fc3f808613772ef1165137
+Author: Asim YarKhan <yarkhan@icl.utk.edu>
+Date:   Wed Oct 15 14:48:05 2014 -0400
+
+    PPC64 add support for PPC64 Little Endian to sprofile.c
+    
+    Thanks to Carl Love for this patch and the following description:
+    The POWER 8 platform is Little Endian.  It uses ELF
+    version 2 which does not use function descriptors.  This
+    patch adds the needed #ifdef support to correctly compile
+    the test case for Big Endian or Little Endian.
+
+diff --git a/src/ctests/sprofile.c b/src/ctests/sprofile.c
+index e7ee47a..4bd7cc7 100644
+--- a/src/ctests/sprofile.c
++++ b/src/ctests/sprofile.c
+@@ -1,4 +1,4 @@
+-/* 
++/*
+ * File:    sprofile.c
+ * Author:  Philip Mucci
+ *          mucci@cs.utk.edu
+@@ -10,10 +10,15 @@
+ 
+ /* These architectures use Function Descriptors as Function Pointers */
+ 
+-#if (defined(linux) && defined(__ia64__)) || (defined(_AIX)) ||(defined(__powerpc64__))
++#if (defined(linux) && defined(__ia64__)) || (defined(_AIX)) \
++  || ((defined(__powerpc64__) && (_CALL_ELF != 2)))
++/* PPC64 Big Endian is ELF version 1 which uses function descriptors */
+ #define DO_READS (unsigned long)(*(void **)do_reads)
+ #define DO_FLOPS (unsigned long)(*(void **)do_flops)
+ #else
++/* PPC64 Little Endian is ELF version 2 which does not use
++ * function descriptors
++ */
+ #define DO_READS (unsigned long)(do_reads)
+ #define DO_FLOPS (unsigned long)(do_flops)
+ #endif

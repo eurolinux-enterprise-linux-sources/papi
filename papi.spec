@@ -2,7 +2,7 @@
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.2.0
-Release: 14%{?dist}
+Release: 23%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -17,6 +17,17 @@ Patch401: papi-kvmrapl.patch
 Patch500: papi-sys_mem_info.patch
 Patch700: papi-krentel.patch
 Patch900: papi-inficonst.patch
+Patch1000: papi-bz1263666.patch
+Patch1001: papi-bz1326977.patch
+Patch1002: papi-bz1277931.patch
+Patch1003: papi-bz1313088.patch
+Patch1004: papi-postfixcalc.patch
+Patch1005: papi-errmsg.patch
+Patch1006: papi-schedule.patch
+Patch1010: papi-rhbz1362591.patch
+Patch1011: papi-ppc64_cache.patch
+Patch1012: papi-intel_knl.patch
+Patch2000: papi-avoid_libpfm_enum.patch
 BuildRequires: autoconf
 BuildRequires: doxygen
 BuildRequires: ncurses-devel
@@ -75,6 +86,17 @@ the PAPI user-space libraries and interfaces.
 %patch500 -p1
 %patch700 -p1
 %patch900 -p1
+%patch1000 -p1
+%patch1001 -p1
+%patch1002 -p1
+%patch1003 -p1
+%patch1004 -p1
+%patch1005 -p1
+%patch1006 -p1
+%patch1010 -p1 -b .rhbz1362591
+%patch1011 -p1 -b .ppc64cache
+%patch1012 -p1 -b .knl
+%patch2000 -p1 -b .max
 
 %build
 %if %{without bundled_libpfm}
@@ -87,7 +109,7 @@ autoconf
 %configure --with-perf-events \
 %{?libpfm_config} \
 --with-static-lib=yes --with-shared-lib=yes --with-shlib \
---with-components="appio coretemp example infiniband lmsensors lustre micpower mx net rapl stealtime"
+--with-components="appio coretemp example lmsensors lustre micpower mx net rapl stealtime"
 # implicit enabled components: perf_event perf_event_uncore
 #components currently left out because of build configure/build issues
 # --with-components="bgpm coretemp_freebsd cuda host_micpower nvml vmware"
@@ -95,7 +117,7 @@ autoconf
 pushd components
 #pushd cuda; ./configure; popd
 #pushd host_micpower; ./configure; popd
-pushd infiniband; %configure; popd
+#pushd infiniband; ./configure; popd
 pushd lmsensors; \
  %configure --with-sensors_incdir=/usr/include/sensors \
  --with-sensors_libdir=%{_libdir}; \
@@ -156,6 +178,38 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/*.a
 
 %changelog
+* Fri Jun 9 2017 William Cohen <wcohen@redhat.com> - 5.2.0-23
+- Avoid using PFM_PMU_MAX.
+
+* Wed Apr 26 2017 William Cohen <wcohen@redhat.com> - 5.2.0-22
+- Disable infiniband component. rhbz1445777
+
+* Wed Mar 22 2017 William Cohen <wcohen@redhat.com> - 5.2.0-21
+- Correct ppc64 events. rhbz1385008
+- Add events for Intel KNL. rhbz1412952
+
+* Tue Mar 21 2017 William Cohen <wcohen@redhat.com> - 5.2.0-20
+- Dynamically link the papi ctests. rhbz1362591
+
+* Tue Aug 2 2016 William Cohen <wcohen@redhat.com> - 5.2.0-19
+- Rebuild with libpfm-4.7.0.
+
+* Wed Jul 27 2016 William Cohen <wcohen@redhat.com> - 5.2.0-18
+- Check schedulability on aarch64.
+
+* Tue Jul 26 2016 William Cohen <wcohen@redhat.com> - 5.2.0-17
+- Eliminate possible stack smashing.
+
+* Tue Jun 21 2016 William Cohen <wcohen@redhat.com> - 5.2.0-16
+- Correct ftests/tenth test behavior on power. rhbz1313088
+
+* Thu May 12 2016 William Cohen <wcohen@redhat.com> - 5.2.0-15
+- Update papi L1 cache events on POWER7
+- Prevent papi-testsuite segfaults
+- Identify kernels that support rdpmc
+- Correct papi-testsuite byte_profile and sprofile tests on ppc64le
+- Update PAPI_L1_TCM event on Haswells
+
 * Mon Aug 10 2015 William Cohen <wcohen@redhat.com> - 5.2.0-14
 - Fix build for newer infiband libs. rhbz1251645
 

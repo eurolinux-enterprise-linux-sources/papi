@@ -1,0 +1,170 @@
+diff -up papi-5.2.0/src/components/perf_event/pe_libpfm4_events.c.orig papi-5.2.0/src/components/perf_event/pe_libpfm4_events.c
+--- papi-5.2.0/src/components/perf_event/pe_libpfm4_events.c.orig	2013-08-06 12:12:20.000000000 -0400
++++ papi-5.2.0/src/components/perf_event/pe_libpfm4_events.c	2017-06-15 22:41:58.784904523 -0400
+@@ -236,14 +236,15 @@ static int find_next_no_aliases(int code
+         current_pmu++;
+         SUBDBG("Incrementing PMU: %#x\n",current_pmu);
+ 
++        memset(&pinfo,0,sizeof(pfm_pmu_info_t));
++        ret = pfm_get_pmu_info(current_pmu, &pinfo);
++
+ 	/* Off the end, so done iterating */
+-        if (current_pmu>PFM_PMU_MAX) {
++        if (ret==PFM_ERR_INVAL) {
+            return PFM_ERR_NOTFOUND;
+         }
+  
+-        memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+-        pfm_get_pmu_info(current_pmu, &pinfo);
+-        if (pmu_is_present_and_right_type(&pinfo,pmu_type)) break;
++        if ((ret==PFM_SUCCESS) && pmu_is_present_and_right_type(&pinfo,pmu_type)) break;
+      }
+ 
+      current_event=pinfo.first_event;
+@@ -533,12 +534,21 @@ get_event_first_active(int pmu_type)
+ 
+   pmu_idx=0;
+ 
+-  while(pmu_idx<PFM_PMU_MAX) {
++	/* We loop forever here and exit if pfm_get_pmu_info() fails.	*/
++	/* Before we only went up to PFM_PMU_MAX but this is set at	*/
++	/* compile time and might not reflect the number of PMUs if	*/
++	/* PAPI is dynamically linked against libpfm4.			*/
++
++  while(1) {
+ 
+     /* clear the PMU structure (required by libpfm4) */
+     memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+     ret=pfm_get_pmu_info(pmu_idx, &pinfo);
+ 
++    if (ret==PFM_ERR_INVAL) {
++	    break;
++    }
++
+     if ((ret==PFM_SUCCESS) && pmu_is_present_and_right_type(&pinfo,pmu_type)) {
+ 
+       pidx=pinfo.first_event;
+@@ -1372,14 +1382,23 @@ _pe_libpfm4_init(papi_vector_t *my_vecto
+    retval=pfm_get_pmu_info(0, &(event_table->default_pmu));
+    
+    SUBDBG("Detected pmus:\n");
+-   for(i=0;i<PFM_PMU_MAX;i++) {
++   i=0;
++   while(1) {
+       memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+       retval=pfm_get_pmu_info(i, &pinfo);
+-      if (retval!=PFM_SUCCESS) {
+-	 continue;
++
++      /* We're done if we hit an invalid PMU entry			*/
++      /* We can't check against PFM_PMU_MAX				*/
++      /* as that might not match if libpfm4 is dynamically linked	*/
++
++      if (retval==PFM_ERR_INVAL) {
++	      break;
+       }
+ 
+-      if (pmu_is_present_and_right_type(&pinfo,pmu_type)) {
++      if ((retval==PFM_SUCCESS) && (pinfo.name != NULL) &&
++	(pmu_is_present_and_right_type(&pinfo,pmu_type))) {
++
++
+ 	 SUBDBG("\t%d %s %s %d\n",i,pinfo.name,pinfo.desc,pinfo.type);
+ 
+          detected_pmus++;
+@@ -1402,6 +1421,7 @@ _pe_libpfm4_init(papi_vector_t *my_vecto
+ 	       found_default=1;
+ 	 }
+       }
++	i++;
+    }
+    SUBDBG("%d native events detected on %d pmus\n",ncnt,detected_pmus);
+ 
+@@ -1421,7 +1441,7 @@ _pe_libpfm4_init(papi_vector_t *my_vecto
+                                    event_table->default_pmu.num_fixed_cntrs;
+ 
+    SUBDBG( "num_counters: %d\n", my_vector->cmp_info.num_cntrs );
+-   
++
+    /* Setup presets, only if Component 0 */
+    if (cidx==0) {
+       retval = _papi_load_preset_table( (char *)event_table->default_pmu.name, 
+diff -up papi-5.2.0/src/components/perf_event_uncore/peu_libpfm4_events.c.orig papi-5.2.0/src/components/perf_event_uncore/peu_libpfm4_events.c
+--- papi-5.2.0/src/components/perf_event_uncore/peu_libpfm4_events.c.orig	2013-08-06 12:12:20.000000000 -0400
++++ papi-5.2.0/src/components/perf_event_uncore/peu_libpfm4_events.c	2017-06-15 22:50:08.700238377 -0400
+@@ -238,14 +238,15 @@ static int find_next_no_aliases(int code
+         current_pmu++;
+         SUBDBG("Incrementing PMU: %#x\n",current_pmu);
+ 
++        memset(&pinfo,0,sizeof(pfm_pmu_info_t));
++        ret=pfm_get_pmu_info(current_pmu, &pinfo);
++
+ 	/* Off the end, so done iterating */
+-        if (current_pmu>PFM_PMU_MAX) {
++        if (ret==PFM_ERR_INVAL) {
+            return PFM_ERR_NOTFOUND;
+         }
+  
+-        memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+-        pfm_get_pmu_info(current_pmu, &pinfo);
+-        if (pmu_is_present_and_right_type(&pinfo,pmu_type)) break;
++        if ((ret==PFM_SUCCESS) && pmu_is_present_and_right_type(&pinfo,pmu_type)) break;
+      }
+ 
+      current_event=pinfo.first_event;
+@@ -531,12 +532,20 @@ get_event_first_active(int pmu_type)
+ 
+   pmu_idx=0;
+ 
+-  while(pmu_idx<PFM_PMU_MAX) {
++  /* We loop forever here and exit if pfm_get_pmu_info() fails.	*/
++  /* Before we only went up to PFM_PMU_MAX but this is set at	*/
++  /* compile time and might not reflect the number of PMUs if	*/
++  /* PAPI is dynamically linked against libpfm4.		*/
++  while(1) {
+ 
+     /* clear the PMU structure (required by libpfm4) */
+     memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+     ret=pfm_get_pmu_info(pmu_idx, &pinfo);
+ 
++    if (ret==PFM_ERR_INVAL) {
++	    break;
++    }
++
+     if ((ret==PFM_SUCCESS) && pmu_is_present_and_right_type(&pinfo,pmu_type)) {
+ 
+       pidx=pinfo.first_event;
+@@ -1356,14 +1365,21 @@ _peu_libpfm4_init(papi_vector_t *my_vect
+    my_vector->cmp_info.num_cntrs=0;
+ 
+    SUBDBG("Detected pmus:\n");
+-   for(i=0;i<PFM_PMU_MAX;i++) {
++   i=0;
++   while(1) {
+       memset(&pinfo,0,sizeof(pfm_pmu_info_t));
+       retval=pfm_get_pmu_info(i, &pinfo);
+-      if (retval!=PFM_SUCCESS) {
+-	 continue;
++
++      /* We're done if we hit an invalid PMU entry                    */
++      /* We can't check against PFM_PMU_MAX                           */
++      /* as that might not match if libpfm4 is dynamically linked     */
++
++      if (retval==PFM_ERR_INVAL) {
++	      break;
+       }
+ 
+-      if (pmu_is_present_and_right_type(&pinfo,pmu_type)) {
++      if ((retval==PFM_SUCCESS) && (pinfo.name != NULL) &&
++	  (pmu_is_present_and_right_type(&pinfo,pmu_type))) {
+ 	 SUBDBG("\t%d %s %s %d\n",i,pinfo.name,pinfo.desc,pinfo.type);
+ 
+          detected_pmus++;
+@@ -1372,6 +1388,7 @@ _peu_libpfm4_init(papi_vector_t *my_vect
+          my_vector->cmp_info.num_cntrs += pinfo.num_cntrs+
+                                    pinfo.num_fixed_cntrs;
+       }
++	i++;
+    }
+    SUBDBG("%d native events detected on %d pmus\n",ncnt,detected_pmus);
+ 
