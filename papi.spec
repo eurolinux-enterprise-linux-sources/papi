@@ -2,7 +2,7 @@
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.2.0
-Release: 23%{?dist}
+Release: 25%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -28,6 +28,9 @@ Patch1010: papi-rhbz1362591.patch
 Patch1011: papi-ppc64_cache.patch
 Patch1012: papi-intel_knl.patch
 Patch2000: papi-avoid_libpfm_enum.patch
+Patch2001: papi-power9.patch
+Patch2002: papi-p9_presets.patch
+Patch2003: papi-lmsensors.patch
 BuildRequires: autoconf
 BuildRequires: doxygen
 BuildRequires: ncurses-devel
@@ -97,6 +100,9 @@ the PAPI user-space libraries and interfaces.
 %patch1011 -p1 -b .ppc64cache
 %patch1012 -p1 -b .knl
 %patch2000 -p1 -b .max
+%patch2001 -p1 -b .power9
+%patch2002 -p1 -b .power9a
+%patch2003 -p1 -b .lm_dyn
 
 %build
 %if %{without bundled_libpfm}
@@ -178,6 +184,13 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/*.a
 
 %changelog
+* Thu Nov 30 2017 William Cohen <wcohen@redhat.com> - 5.2.0-25
+- Update IBM Power 9 events. rhbz1510684
+- Make lmsensor dynamically size internal array. rhbz1510497
+
+* Fri Jun 23 2017 William Cohen <wcohen@redhat.com> - 5.2.0-24
+- Add power9 support. rhbz1368708
+
 * Fri Jun 9 2017 William Cohen <wcohen@redhat.com> - 5.2.0-23
 - Avoid using PFM_PMU_MAX.
 

@@ -1,0 +1,279 @@
+Delivered-To: wcohen@gapps.redhat.com
+Received: by 10.2.61.214 with SMTP id n205csp4376099jan;
+        Thu, 16 Nov 2017 09:58:45 -0800 (PST)
+X-Google-Smtp-Source: AGs4zMax/ZUisnOd/4vbJjzIbkOHQmsqzVvW391r/EEfSSXryt3rhnCvyvZ8nwvIDAT3hVFTA9U6
+X-Received: by 10.157.83.201 with SMTP id i9mr1940520oth.109.1510855125927;
+        Thu, 16 Nov 2017 09:58:45 -0800 (PST)
+ARC-Seal: i=3; a=rsa-sha256; t=1510855125; cv=pass;
+        d=google.com; s=arc-20160816;
+        b=DsaHDcFktiBdsJuP2C+RInHq/TVm8BoNEqMABEPtGTPmIP1f5UsvLJptw23QID8rcL
+         121RAiwjbrlEKlWVLkaDIguu0JD2emAFloCck6XRxniQ7HrUlYbUS5hoQt2/WeYM8ZoC
+         PCCWR6NTlhjb/cH/r/WRu9JKMuNlp75LzYGng3CIpoX2mrYJw1d+bfzJ3yyxEDdiN3Ja
+         NNaWwvakv9CJ2yuSlkPvZiVrJM/JLv3+ri6LPLyINDhF6ROqwcNamlCcSDJ3lM/X3hpZ
+         rwmK2VGijnaYf14EmjWj0tLw+ermd9GUaA31TdW/zM131Ffvh9C8w7+JtjPZQkSdP8aX
+         mCDA==
+ARC-Message-Signature: i=3; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=list-unsubscribe:list-archive:list-help:list-post:list-id
+         :mailing-list:precedence:message-id:mime-version:date:references
+         :in-reply-to:cc:to:reply-to:from:subject:arc-authentication-results
+         :arc-message-signature:dkim-signature:arc-authentication-results
+         :arc-message-signature:delivered-to:arc-authentication-results;
+        bh=MkNSWjJKmF0uolUfpTuavxNw1bBfThYsNjif804dKxs=;
+        b=beQ7cceG4ovInu1ROHjvsAuNbxiude3mJlg1PZxUTyGQ9G/l/22I1wTlpcu0SwRbOu
+         fBQ+0teuiAtah7N9ymeU4k4H58uNvXlxxWMPZt5UG0gVuQoS5emEjr7Hvx5KSYTuyM9k
+         O8FqeTzubkyR9rabn1KhiWCtMkcSr+mz0p2jsI/k8zQhovKibMTD0cBn0B4Ea3hHRuSk
+         1yu0BoMzH+YsWvninvNofcgdv0R+eZkiM2jaJ29ElaNaNIKbHqyLgEo9kqwY0Htt6p9b
+         JjLxuOpnW61tqpF/irGUnTH3y3RuapDr+FkL83jVaq+NcE4UuRjPshDiozCln0Ffogc7
+         kFNQ==
+ARC-Authentication-Results: i=3; mx.google.com;
+       dkim=pass header.i=@icl-utk-edu.20150623.gappssmtp.com header.s=20150623 header.b=bxeglT4Y;
+       arc=pass (i=2 spf=pass spfdomain=vnet.ibm.com dmarc=pass fromdomain=ibm.com);
+       spf=neutral (google.com: 209.85.128.200 is neither permitted nor denied by best guess record for domain of perfapi-devel+bncbca45zg3uecrbuvdw7iakgqef7q2e4y@icl.utk.edu) smtp.mailfrom=perfapi-devel+bncBCA45ZG3UECRBUVDW7IAKGQEF7Q2E4Y@icl.utk.edu
+Return-Path: <perfapi-devel+bncBCA45ZG3UECRBUVDW7IAKGQEF7Q2E4Y@icl.utk.edu>
+Received: from mx1.redhat.com (mx1.redhat.com. [209.132.183.28])
+        by mx.google.com with ESMTPS id l4si505209oif.446.2017.11.16.09.58.45
+        for <wcohen@gapps.redhat.com>
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Thu, 16 Nov 2017 09:58:45 -0800 (PST)
+Received-SPF: neutral (google.com: 209.85.128.200 is neither permitted nor denied by best guess record for domain of perfapi-devel+bncbca45zg3uecrbuvdw7iakgqef7q2e4y@icl.utk.edu) client-ip=209.85.128.200;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@icl-utk-edu.20150623.gappssmtp.com header.s=20150623 header.b=bxeglT4Y;
+       arc=pass (i=2 spf=pass spfdomain=vnet.ibm.com dmarc=pass fromdomain=ibm.com);
+       spf=neutral (google.com: 209.85.128.200 is neither permitted nor denied by best guess record for domain of perfapi-devel+bncbca45zg3uecrbuvdw7iakgqef7q2e4y@icl.utk.edu) smtp.mailfrom=perfapi-devel+bncBCA45ZG3UECRBUVDW7IAKGQEF7Q2E4Y@icl.utk.edu
+Received: from smtp.corp.redhat.com (int-mx01.intmail.prod.int.phx2.redhat.com [10.5.11.11])
+	(using TLSv1.2 with cipher AECDH-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id 5BF2913A60
+	for <wcohen@gapps.redhat.com>; Thu, 16 Nov 2017 17:58:45 +0000 (UTC)
+Received: by smtp.corp.redhat.com (Postfix)
+	id 5619B6062A; Thu, 16 Nov 2017 17:58:45 +0000 (UTC)
+Delivered-To: wcohen@redhat.com
+Received: from mx1.redhat.com (ext-mx07.extmail.prod.ext.phx2.redhat.com [10.5.110.31])
+	by smtp.corp.redhat.com (Postfix) with ESMTPS id 4D85B605FB
+	for <wcohen@redhat.com>; Thu, 16 Nov 2017 17:58:45 +0000 (UTC)
+Received: from mail-wr0-f200.google.com (mail-wr0-f200.google.com [209.85.128.200])
+	(using TLSv1.2 with cipher ECDHE-RSA-AES128-GCM-SHA256 (128/128 bits))
+	(No client certificate requested)
+	by mx1.redhat.com (Postfix) with ESMTPS id E8623C0467FC
+	for <wcohen@redhat.com>; Thu, 16 Nov 2017 17:58:43 +0000 (UTC)
+Received: by mail-wr0-f200.google.com with SMTP id k100sf14844289wrc.9
+        for <wcohen@redhat.com>; Thu, 16 Nov 2017 09:58:43 -0800 (PST)
+ARC-Seal: i=2; a=rsa-sha256; t=1510855122; cv=pass;
+        d=google.com; s=arc-20160816;
+        b=0SO5jF3egz1MpnCi4Ew8OfiDMe+zhE+uuPs7nZv+aqU/Ooc8v5958R9PQ2LW6rLcr5
+         iBKpqyh3DMIETWaBlOdCeTUXegvWKxxpl9/w4ffJkYgqcVNZs6iMsQTlJi5NBWvcZLPB
+         h33TZnMGHxSqUVjRUhKs3BidZckYTMZrPMfptNXUYHfDQivNOufI/KV9j/2CQ5sWyw/Y
+         6Mb/L5SZzFVPOE8OH+JToTeqK9tKB0L9ifiG8UzZQuhWTKvBrhyhfe/RNiVuelmZ+pU9
+         HSHi4X3TfD9mK5zlFoxzHviqy8A47s1NIBkb1/qWvEqZpGa3hufr4aGndDHmS8hzEuou
+         YbKA==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=list-unsubscribe:list-archive:list-help:list-post:list-id
+         :mailing-list:precedence:message-id:mime-version:date:references
+         :in-reply-to:cc:to:reply-to:from:subject:arc-authentication-results
+         :arc-message-signature:dkim-signature:arc-authentication-results;
+        bh=MkNSWjJKmF0uolUfpTuavxNw1bBfThYsNjif804dKxs=;
+        b=PcsEtFqOSoY5FIehYXKXgRGgA7vVukuNIas+zhYNfBnHjzEQFGflrBqlrdi3QqLjTx
+         el97wM0XcRv6quQdb8ljSjqJTSOsldtrQ1E1hYMZRABh0vEGhfolrgMSoIUbUl6Pi0iL
+         EHfaJnTHugkgRntcyEhsOVmpB6EcMTcRhobq+vv8jNiK+AaHd/B9BJI9NGWbhllpX/cY
+         44st1wDirbKf3NhqP4bXCYGA1umbkUWiCAqYVjiypzY3xdVTe/LUYW6Tv0cewK3soiE/
+         jdEW8bHAOkt0go4C7IjVCpe8RPq7cZTB7bjxsLjgE591feVHFJ0T9SdutHlCJ+4kn5HN
+         dRaQ==
+ARC-Authentication-Results: i=2; mx.google.com;
+       spf=pass (google.com: domain of will_schmidt@vnet.ibm.com designates 148.163.158.5 as permitted sender) smtp.mailfrom=will_schmidt@vnet.ibm.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=ibm.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=icl-utk-edu.20150623.gappssmtp.com; s=20150623;
+        h=subject:from:reply-to:to:cc:in-reply-to:references:date
+         :mime-version:message-id:x-original-sender
+         :x-original-authentication-results:precedence:mailing-list:list-id
+         :list-post:list-help:list-archive:list-unsubscribe;
+        bh=MkNSWjJKmF0uolUfpTuavxNw1bBfThYsNjif804dKxs=;
+        b=bxeglT4YF54O9ckF9j2u46g16IR9Oe3K5nO+s4v9VZV9IPXxa6Sq/WfJyMNQYxrSBR
+         +Ajbgz0aZCVjloqGX04vqTvehC/ffRDHsCVRnqOMDCvlqarKqybIPpm44iu2KrrEkPQV
+         bHzH5OdhTLeX49B/wEiWjR9HfQD3u/PX1WE2Fq0D6hK+jHRpmjoqalO2lfWHKqe8KNP7
+         Y/Re+kBbLUsXdrOG88qOQoZ3N/Vl1WM6m3ZNSqm3qh418MNTDH5BCG6pmrIGX8BWZVKN
+         FgKY/UHpQ+JZcdfzNPLGdV+X5420OoQgSbJawMHTG4ibW/bphM18S+Iy+NDUrTZwQp2T
+         V8/g==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20161025;
+        h=x-gm-message-state:subject:from:reply-to:to:cc:in-reply-to
+         :references:date:mime-version:message-id:x-original-sender
+         :x-original-authentication-results:precedence:mailing-list:list-id
+         :x-spam-checked-in-group:list-post:list-help:list-archive
+         :list-unsubscribe;
+        bh=MkNSWjJKmF0uolUfpTuavxNw1bBfThYsNjif804dKxs=;
+        b=f99Oe5P8JyIorfE7H+Xj95oO0RjAKvqfPsRku4ppYF9XjAarFVOOYG6RGaPZg6x2EY
+         5wJ36Kxk9cJsE//rS7/WZh44S03HnOYXx8vTIttapj3gHptBJUt3umz5xt5EfR8T6seC
+         atzB1deXAc6l5tL3nGiRxhq051rvCdtlKnPMs7BcSosi6r7mgNYvHqYMwTZ2UTetgxrQ
+         rTSrALNuR4DcHghR3YIqfv6IWqViZS9BATUlhubIzora8xF59TgVbxc+vX9MvgFf8rFE
+         /ZkXwCIQLw7qzXvzMjKnQu3y33EZzShHqEBzRFh5aCufhf+h3POE2zXhLoVwOXDlV65k
+         mg2Q==
+X-Gm-Message-State: AJaThX5EQAW8k62vokWcfUy+gmyKN3v6QA/T05CGxdKhs+JgUquedMQZ
+	HjfC8n2aQkMZtAe3ur8bNgwLpA==
+X-Received: by 10.80.174.140 with SMTP id e12mr975452edd.12.1510855122735;
+        Thu, 16 Nov 2017 09:58:42 -0800 (PST)
+X-BeenThere: perfapi-devel@icl.utk.edu
+Received: by 10.80.192.1 with SMTP id r1ls1294523edb.0.gmail; Thu, 16 Nov 2017
+ 09:58:42 -0800 (PST)
+X-Received: by 10.80.224.65 with SMTP id g1mr3832723edl.264.1510855122468;
+        Thu, 16 Nov 2017 09:58:42 -0800 (PST)
+ARC-Seal: i=1; a=rsa-sha256; t=1510855122; cv=none;
+        d=google.com; s=arc-20160816;
+        b=L1XXdt5RvFrD+5fTW6O6CeiiEkzAC8T9BXwW+5BU1cv7TD+uTN2d5Ek8Di/xB7nTAp
+         xk/aNLDqyQ6ckHmW0zt5dJ8RxgNrxmrmFBNsEvTRfSD9BJ9A2FtAXS5FIaYBIuyReGs+
+         uj5WX1n4I+0djCj8UEgaxI4TcYp8hZ68s9c5LZZAAntjl98lFFEXbsgyTDN16rC9ZzHN
+         gFILp9U9grdjIebDJxtcrqVh8fY9xzPcJ70uVnUsWXti05vJ6L7cQLqeQ+P9YZsKueHg
+         MvqzvV8BT19LgMPzM1Dhax6/bAt3UJQ/nxK1WHUrZFG2HWG5wxaIC9WFZIhzM2C/3QVv
+         +mEw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20160816;
+        h=message-id:content-transfer-encoding:mime-version:date:references
+         :in-reply-to:cc:to:reply-to:from:subject:arc-authentication-results;
+        bh=4JceejFB1FA57YiAIMefPybgXpNLvGy5GdgVeXnUK/I=;
+        b=oLLuDAZQinzj8TmTcEZGq3reR8Rpqz5pa+cccugHBYDZcJf+h/jMMnWud8uJSBTkOv
+         hbu1lXCZ7S9aAZZ0ToK05A3YwuaqbB4UBITdgcXUxpXClCTCHUvALWaoW8OmNcBWrQ12
+         IbUil1E+NVcHgxPcQDGQVQVHgQPTjX3vHRPQ9HZLwa8zl/hudx+hGS4GUzwH/M1/pwcn
+         fx+l/OTGv6So2e2Lu9VL8qZepBwrNp3IiTFEVhnrG2MjMxaRm0Nm1zzPwBnZH7f2zIZB
+         8TmMqJu0JDuPf5lnCBCjgHOSj9xjcDtfNEis5+7O5a6429ghzXpnry07e+YeYaAXrLlP
+         feZw==
+ARC-Authentication-Results: i=1; mx.google.com;
+       spf=pass (google.com: domain of will_schmidt@vnet.ibm.com designates 148.163.158.5 as permitted sender) smtp.mailfrom=will_schmidt@vnet.ibm.com;
+       dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=ibm.com
+Received: from mx0a-001b2d01.pphosted.com (mx0b-001b2d01.pphosted.com. [148.163.158.5])
+        by mx.google.com with ESMTPS id u12si1578561edk.235.2017.11.16.09.58.42
+        for <perfapi-devel@icl.utk.edu>
+        (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128);
+        Thu, 16 Nov 2017 09:58:42 -0800 (PST)
+Received-SPF: pass (google.com: domain of will_schmidt@vnet.ibm.com designates 148.163.158.5 as permitted sender) client-ip=148.163.158.5;
+Received: from pps.filterd (m0098413.ppops.net [127.0.0.1])
+	by mx0b-001b2d01.pphosted.com (8.16.0.21/8.16.0.21) with SMTP id vAGHtNwH018998
+	for <perfapi-devel@icl.utk.edu>; Thu, 16 Nov 2017 12:58:41 -0500
+Received: from e34.co.us.ibm.com (e34.co.us.ibm.com [32.97.110.152])
+	by mx0b-001b2d01.pphosted.com with ESMTP id 2e9ec1421y-1
+	(version=TLSv1.2 cipher=AES256-SHA bits=256 verify=NOT)
+	for <perfapi-devel@icl.utk.edu>; Thu, 16 Nov 2017 12:58:40 -0500
+Received: from localhost
+	by e34.co.us.ibm.com with IBM ESMTP SMTP Gateway: Authorized Use Only! Violators will be prosecuted
+	for <perfapi-devel@icl.utk.edu> from <will_schmidt@vnet.ibm.com>;
+	Thu, 16 Nov 2017 10:58:40 -0700
+Received: from b03cxnp07028.gho.boulder.ibm.com (9.17.130.15)
+	by e34.co.us.ibm.com (192.168.1.134) with IBM ESMTP SMTP Gateway: Authorized Use Only! Violators will be prosecuted;
+	Thu, 16 Nov 2017 10:58:37 -0700
+Received: from b03ledav004.gho.boulder.ibm.com (b03ledav004.gho.boulder.ibm.com [9.17.130.235])
+	by b03cxnp07028.gho.boulder.ibm.com (8.14.9/8.14.9/NCO v10.0) with ESMTP id vAGHwbaX5374348;
+	Thu, 16 Nov 2017 10:58:37 -0700
+Received: from b03ledav004.gho.boulder.ibm.com (unknown [127.0.0.1])
+	by IMSVA (Postfix) with ESMTP id 4E8F178043;
+	Thu, 16 Nov 2017 10:58:37 -0700 (MST)
+Received: from [9.10.86.107] (unknown [9.10.86.107])
+	by b03ledav004.gho.boulder.ibm.com (Postfix) with ESMTP id 0DD5478041;
+	Thu, 16 Nov 2017 10:58:37 -0700 (MST)
+Subject: [perfapi-devel] [PATCH, papi 2/2] revised papi_derived patch.
+From: Will Schmidt <will_schmidt@vnet.ibm.com>
+Reply-To: will_schmidt@vnet.ibm.com
+To: William Cohen <wcohen@redhat.com>
+Cc: perfapi-devel@icl.utk.edu, Carl Love <cel@us.ibm.com>,
+        Michael Petlan
+ <mpetlan@redhat.com>
+In-Reply-To: <7fc6961c-c8a0-bf03-44c4-a38542bde751@redhat.com>
+References: <7fc6961c-c8a0-bf03-44c4-a38542bde751@redhat.com>
+Content-Type: text/plain; charset="UTF-8"
+Date: Thu, 16 Nov 2017 11:58:36 -0600
+Mime-Version: 1.0
+X-TM-AS-GCONF: 00
+x-cbid: 17111617-0016-0000-0000-000007D17EA9
+X-IBM-SpamModules-Scores: 
+X-IBM-SpamModules-Versions: BY=3.00008075; HX=3.00000241; KW=3.00000007;
+ PH=3.00000004; SC=3.00000240; SDB=6.00946795; UDB=6.00477952; IPR=6.00727087;
+ BA=6.00005695; NDR=6.00000001; ZLA=6.00000005; ZF=6.00000009; ZB=6.00000000;
+ ZP=6.00000000; ZH=6.00000000; ZU=6.00000002; MB=3.00018048; XFM=3.00000015;
+ UTC=2017-11-16 17:58:38
+X-IBM-AV-DETECTION: SAVI=unused REMOTE=unused XFE=unused
+x-cbparentid: 17111617-0017-0000-0000-00003C472AC6
+Message-Id: <1510855116.26707.298.camel@brimstone.rchland.ibm.com>
+X-Proofpoint-Virus-Version: vendor=fsecure engine=2.50.10432:,, definitions=2017-11-16_06:,,
+ signatures=0
+X-Proofpoint-Spam-Details: rule=outbound_notspam policy=outbound score=0 priorityscore=1501
+ malwarescore=0 suspectscore=0 phishscore=0 bulkscore=0 spamscore=0
+ clxscore=1015 lowpriorityscore=0 impostorscore=0 adultscore=0
+ classifier=spam adjust=0 reason=mlx scancount=1 engine=8.0.1-1709140000
+ definitions=main-1711160240
+X-Original-Sender: will_schmidt@vnet.ibm.com
+X-Original-Authentication-Results: mx.google.com;       spf=pass (google.com:
+ domain of will_schmidt@vnet.ibm.com designates 148.163.158.5 as permitted
+ sender) smtp.mailfrom=will_schmidt@vnet.ibm.com;       dmarc=pass (p=NONE
+ sp=NONE dis=NONE) header.from=ibm.com
+Precedence: list
+Mailing-list: list perfapi-devel@icl.utk.edu; contact perfapi-devel+owners@icl.utk.edu
+List-ID: <perfapi-devel.icl.utk.edu>
+X-Spam-Checked-In-Group: perfapi-devel@icl.utk.edu
+X-Google-Group-Id: 266578408864
+List-Post: <https://groups.google.com/a/icl.utk.edu/group/perfapi-devel/post>, <mailto:perfapi-devel@icl.utk.edu>
+List-Help: <https://support.google.com/a/icl.utk.edu/bin/topic.py?topic=25838>,
+ <mailto:perfapi-devel+help@icl.utk.edu>
+List-Archive: <https://groups.google.com/a/icl.utk.edu/group/perfapi-devel/>
+List-Unsubscribe: <mailto:googlegroups-manage+266578408864+unsubscribe@googlegroups.com>,
+ <https://groups.google.com/a/icl.utk.edu/group/perfapi-devel/subscribe>
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.31]); Thu, 16 Nov 2017 17:58:44 +0000 (UTC)
+X-Greylist: inspected by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.31]); Thu, 16 Nov 2017 17:58:44 +0000 (UTC) for IP:'209.85.128.200' DOMAIN:'mail-wr0-f200.google.com' HELO:'mail-wr0-f200.google.com' FROM:'perfapi-devel+bncBCA45ZG3UECRBUVDW7IAKGQEF7Q2E4Y@icl.utk.edu' RCPT:''
+X-RedHat-Spam-Score: -2.018  (DKIM_SIGNED,DKIM_VALID,HEADER_FROM_DIFFERENT_DOMAINS,RCVD_IN_DNSWL_NONE,RCVD_IN_MSPIKE_H2,UPPERCASE_50_75) 209.85.128.200 mail-wr0-f200.google.com 209.85.128.200 mail-wr0-f200.google.com <perfapi-devel+bncBCA45ZG3UECRBUVDW7IAKGQEF7Q2E4Y@icl.utk.edu>
+X-Scanned-By: MIMEDefang 2.78 on 10.5.110.31
+X-Scanned-By: MIMEDefang 2.79 on 10.5.11.11
+X-Greylist: Sender IP whitelisted, not delayed by milter-greylist-4.5.16 (mx1.redhat.com [10.5.110.29]); Thu, 16 Nov 2017 17:58:45 +0000 (UTC)
+
+
+[PATCH, papi] Updated derived entries for power9.
+
+This is a re-implementation of the patch that Will Cohen posted
+earlier, which uses the (newly defined) PM_LD_MISS_ALT entry instead 
+of the PM_LD_MISS_FIN .
+
+Thanks,
+-Will
+
+Signed-off-by: Will Schmidt  <will_schmidt@vnet.ibm.com>
+
+diff --git a/src/papi_events.csv b/src/papi_events.csv
+index 644f05a..faa4ae2 100644
+--- a/src/papi_events.csv
++++ b/src/papi_events.csv
+@@ -1570,16 +1570,16 @@ PRESET,PAPI_BR_UCN,NOT_DERIVED,PM_BR_UNCOND_CMPL
+ #n/aPRESET,PAPI_FXU_IDL,NOT_DERIVED,PM_FXU_IDLE
+ #
+ CPU,POWER9
+ CPU,power9
+ #
+-PRESET,PAPI_L1_DCM,DERIVED_ADD,PM_LD_MISS_L1,PM_ST_MISS_L1
+-PRESET,PAPI_L1_LDM,NOT_DERIVED,PM_LD_MISS_L1
++PRESET,PAPI_L1_DCM,DERIVED_ADD,PM_LD_MISS_L1_ALT,PM_ST_MISS_L1
++PRESET,PAPI_L1_LDM,NOT_DERIVED,PM_LD_MISS_L1_ALT
+ PRESET,PAPI_L1_STM,NOT_DERIVED,PM_ST_MISS_L1
+ PRESET,PAPI_L1_DCW,DERIVED_SUB,PM_ST_FIN,PM_ST_MISS_L1
+-PRESET,PAPI_L1_DCR,DERIVED_SUB,PM_LD_REF_L1,PM_LD_MISS_L1
+-#PRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|-|N2|+|N3|-,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1,PM_LD_MISS_L1
++PRESET,PAPI_L1_DCR,DERIVED_SUB,PM_LD_REF_L1,PM_LD_MISS_L1_ALT
++#PRESET,PAPI_L1_DCA,DERIVED_POSTFIX,N0|N1|-|N2|+|N3|-,PM_ST_FIN,PM_ST_MISS_L1,PM_LD_REF_L1,PM_LD_MISS_L1_ALT
+ PRESET,PAPI_L1_DCA,DERIVED_ADD,PM_LD_REF_L1,PM_ST_CMPL
+ PRESET,PAPI_L2_DCM,NOT_DERIVED,PM_DATA_FROM_L2MISS
+ PRESET,PAPI_L2_LDM,NOT_DERIVED,PM_L2_LD_MISS
+ PRESET,PAPI_L2_STM,NOT_DERIVED,PM_L2_ST_MISS
+ PRESET,PAPI_L3_DCR,NOT_DERIVED,PM_DATA_FROM_L2MISS
+@@ -1603,11 +1603,11 @@ PRESET,PAPI_DP_OPS,NOT_DERIVED,PM_DP_QP_FLOP_CMPL
+ PRESET,PAPI_SP_OPS,NOT_DERIVED,PM_SP_FLOP_CMPL
+ PRESET,PAPI_TOT_CYC,NOT_DERIVED,PM_RUN_CYC
+ PRESET,PAPI_HW_INT,NOT_DERIVED,PM_EXT_INT
+ PRESET,PAPI_STL_ICY,DERIVED_POSTFIX,N0|N1|-|,PM_RUN_CYC,PM_1PLUS_PPC_DISP
+ PRESET,PAPI_SR_INS,NOT_DERIVED,PM_ST_FIN
+-PRESET,PAPI_LD_INS,DERIVED_ADD,PM_LD_REF_L1,PM_LD_MISS_L1
++PRESET,PAPI_LD_INS,DERIVED_ADD,PM_LD_REF_L1,PM_LD_MISS_L1_ALT
+ PRESET,PAPI_LST_INS,NOT_DERIVED,PM_LSU_FIN
+ PRESET,PAPI_LST_INS,DERIVED_ADD,PM_LD_REF_L1,PM_LD_MISS_L1,PM_ST_FIN
+ PRESET,PAPI_BR_INS,NOT_DERIVED,PM_BRU_FIN
+ PRESET,PAPI_BR_MSP,NOT_DERIVED,PM_TAKEN_BR_MPRED_CMPL
+ PRESET,PAPI_BR_PRC,NOT_DERIVED,PM_BR_PRED
+
+
+-- 
+You received this message because you are subscribed to the Google Groups "perfapi-devel" group.
+To unsubscribe from this group and stop receiving emails from it, send an email to perfapi-devel+unsubscribe@icl.utk.edu.
+To post to this group, send email to perfapi-devel@icl.utk.edu.
+Visit this group at https://groups.google.com/a/icl.utk.edu/group/perfapi-devel/.
