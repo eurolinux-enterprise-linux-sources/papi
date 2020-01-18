@@ -1,0 +1,88 @@
+commit 071943b6ffb67047c78bc7e7c370fc41c16ef538
+Author: William Cohen <wcohen@redhat.com>
+Date:   Fri Oct 11 13:41:41 2013 -0400
+
+    add preliminary aarch64 (arm64) support
+    
+    There has been some work to build fedora 19 on 64-bit arm armv8 machines
+    (aarch64).  I took a look that the why the papi build was failing.  The
+    attached is a set of minimal patches to get papi to build.  The patch is
+    just a step toward getting aarch64 support for papi. Things are not all
+    there for papi to work in that environment.  Still need libpfm to
+    support aarch64 and papi_events.csv describing mappings to machine
+    specific events.
+
+diff --git a/src/configure b/src/configure
+index 7cbd262..3c50e20 100755
+--- a/src/configure
++++ b/src/configure
+@@ -4262,7 +4262,7 @@ _ACEOF
+ 
+ # First set pthread-mutexes based on arch
+ case $arch in
+-  arm*)
++  aarch64|arm*)
+     pthread_mutexes=yes
+     CFLAGS="$CFLAGS -DUSE_PTHREAD_MUTEXES"
+     echo "forcing use of pthread mutexes... " >&6
+diff --git a/src/configure.in b/src/configure.in
+index 2a73ad6..acc8bfc 100644
+--- a/src/configure.in
++++ b/src/configure.in
+@@ -382,7 +382,7 @@ AC_DEFINE_UNQUOTED(CPU,$CPU,[cpu type])
+ 
+ # First set pthread-mutexes based on arch                                       
+ case $arch in
+-  arm*)
++  aarch64|arm*)
+     pthread_mutexes=yes
+     CFLAGS="$CFLAGS -DUSE_PTHREAD_MUTEXES"
+     echo "forcing use of pthread mutexes... " >&6
+diff --git a/src/linux-context.h b/src/linux-context.h
+index 2135695..524490b 100644
+--- a/src/linux-context.h
++++ b/src/linux-context.h
+@@ -31,6 +31,8 @@ typedef ucontext_t hwd_ucontext_t;
+ #define OVERFLOW_ADDRESS(ctx) ((struct sigcontext *)ctx.ucontext)->si_regs.pc
+ #elif defined(__arm__)
+ #define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.arm_pc
++#elif defined(__aarch64__)
++#define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.pc
+ #elif defined(__mips__)
+ #define OVERFLOW_ADDRESS(ctx) ctx.ucontext->uc_mcontext.pc
+ #else
+diff --git a/src/linux-timer.c b/src/linux-timer.c
+index 8e2d21f..9b918cd 100644
+--- a/src/linux-timer.c
++++ b/src/linux-timer.c
+@@ -215,7 +215,7 @@ get_cycles( void )
+ /* POWER get_cycles()   */
+ /************************/
+ 
+-#elif (defined(__powerpc__) || defined(__arm__) || defined(__mips__))
++#elif (defined(__powerpc__) || defined(__arm__) || defined(__mips__) || defined(__aarch64__))
+ /*
+  * It's not possible to read the cycles from user space on ppc970.
+  * There is a 64-bit time-base register (TBU|TBL), but its
+commit 479e89a51ee18ba331c86a41be9ff17cd501e6d9
+Author: William Cohen <wcohen@redhat.com>
+Date:   Wed May 28 17:01:41 2014 -0400
+
+    Add aarch64 Cortex A57 presets
+    
+    The events for the ARM Cortex A57 events look to be the same as the
+    events for the ARM Cortex A15 events. Add an entry so the preset are
+    available for the ARM Cortex A57.
+
+diff --git a/src/papi_events.csv b/src/papi_events.csv
+index 441844e..dbbc8d8 100644
+--- a/src/papi_events.csv
++++ b/src/papi_events.csv
+@@ -1473,6 +1473,7 @@ PRESET,PAPI_L1_DCM,NOT_DERIVED,DCACHE_REFILL
+ PRESET,PAPI_L1_ICM,NOT_DERIVED,IFETCH_MISS
+ #
+ CPU,arm_ac15
++CPU,arm_ac57
+ #
+ PRESET,PAPI_TOT_INS,NOT_DERIVED,INST_RETIRED
+ PRESET,PAPI_TOT_IIS,NOT_DERIVED,INST_SPEC_EXEC

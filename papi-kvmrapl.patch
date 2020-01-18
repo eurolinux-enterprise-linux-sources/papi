@@ -1,0 +1,30 @@
+commit a5ecda79870b41f5b2ee21975f0f1c931114d258
+Author: sangamesh <sragate@vols.utk.edu>
+Date:   Thu Jun 11 17:48:36 2015 -0400
+
+    Thanks to William Cohen for the patch which does the following:
+    Checking the cpu family and module number is not sufficient to determine
+    whether RAPL can be used.  If the papi is running inside a guest VM,
+    the MSR used by the PAPI RAPL component may not be available.  There
+    should be a simple read test to verify the RAPL MSR registers are
+    available.  This allows the component to more clearly report that RAPL
+    is unsupported rather than just exiting program when the RAPL
+
+diff --git a/src/components/rapl/linux-rapl.c b/src/components/rapl/linux-rapl.c
+index f0d376e..8dff3fe 100644
+--- a/src/components/rapl/linux-rapl.c
++++ b/src/components/rapl/linux-rapl.c
+@@ -447,6 +447,13 @@ _rapl_init_component( int cidx )
+         return PAPI_ESYS;
+      }
+ 
++     /* Verify needed MSR is readable. In a guest VM it may not be readable*/
++     if (pread(fd, &result, sizeof result, MSR_RAPL_POWER_UNIT) != sizeof result ) {
++        strncpy(_rapl_vector.cmp_info.disabled_reason,
++               "Unable to access RAPL registers",PAPI_MAX_STR_LEN);
++        return PAPI_ESYS;
++     }
++
+      /* Calculate the units used */
+      result=read_msr(fd,MSR_RAPL_POWER_UNIT);
+   

@@ -1,0 +1,13 @@
+diff -up papi-5.2.0/src/components/infiniband/linux-infiniband.c.decl papi-5.2.0/src/components/infiniband/linux-infiniband.c
+--- papi-5.2.0/src/components/infiniband/linux-infiniband.c.decl	2015-08-10 16:04:04.528460972 -0400
++++ papi-5.2.0/src/components/infiniband/linux-infiniband.c	2015-08-10 16:06:25.243444756 -0400
+@@ -27,6 +27,9 @@
+ #include "papi_vector.h"
+ #include "papi_memory.h"
+ 
++/* This is a hack remove consts in the declarations to avoid decl mismatch. */
++#define const 
++
+ #include "linux-infiniband.h"
+ 
+ void (*_dl_non_dynamic_init)(void) __attribute__((weak));

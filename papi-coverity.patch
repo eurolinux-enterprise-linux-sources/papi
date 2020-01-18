@@ -1,0 +1,834 @@
+commit 284f25c227d1b6c07e87f6336d3b6ff0533c85d7
+Author: William Cohen <wcohen@redhat.com>
+Date:   Thu Jan 30 16:20:24 2014 -0500
+
+    Use correct specification for signed and unsigned int
+    
+    A run of cppcheck showed that some mismatches between the specfications
+    for sscanf and the variables being used to store the values.  This corrects
+    those minor issues.
+
+diff --git a/src/components/lustre/linux-lustre.c b/src/components/lustre/linux-lustre.c
+index 4f4fb7a..46899f2 100644
+--- a/src/components/lustre/linux-lustre.c
++++ b/src/components/lustre/linux-lustre.c
+@@ -334,13 +334,13 @@ read_lustre_counter( )
+ 			if (fgets(buffer,BUFSIZ,fff)==NULL) break;
+ 	
+ 			if (strstr( buffer, "write_bytes" )) {
+-			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %lld",&fs->write_cntr->value);
+-			  SUBDBG("Read %lld write_bytes\n",fs->write_cntr->value);
++			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %llu",&fs->write_cntr->value);
++			  SUBDBG("Read %llu write_bytes\n",fs->write_cntr->value);
+ 			}
+ 	
+ 			if (strstr( buffer, "read_bytes" )) {
+-			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %lld",&fs->read_cntr->value);
+-			  SUBDBG("Read %lld read_bytes\n",fs->read_cntr->value);
++			  sscanf(buffer,"%*s %*d %*s %*s %*d %*d %llu",&fs->read_cntr->value);
++			  SUBDBG("Read %llu read_bytes\n",fs->read_cntr->value);
+ 			}
+ 		  }
+ 		  fclose(fff);
+@@ -352,8 +352,8 @@ read_lustre_counter( )
+ 			if (fgets(buffer,BUFSIZ,fff)==NULL) break;
+ 	
+ 			if (strstr( buffer, "read but discarded")) {
+-			   sscanf(buffer,"%*s %*s %*s %lld",&fs->readahead_cntr->value);
+-			   SUBDBG("Read %lld discared\n",fs->readahead_cntr->value);
++			   sscanf(buffer,"%*s %*s %*s %llu",&fs->readahead_cntr->value);
++			   SUBDBG("Read %llu discared\n",fs->readahead_cntr->value);
+ 			   break;
+ 			}
+ 	  	  }
+diff --git a/src/components/net/linux-net.c b/src/components/net/linux-net.c
+index ad15d84..ba7563c 100644
+--- a/src/components/net/linux-net.c
++++ b/src/components/net/linux-net.c
+@@ -240,7 +240,7 @@ read_net_counters( long long *values )
+             SUBDBG("Interface <%s> not found\n", ifname);
+         } else {
+             nf = sscanf( data,
+-                "%llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
++                "%lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld\n",
+                 &values[if_bidx + 0],  &values[if_bidx + 1],
+                 &values[if_bidx + 2],  &values[if_bidx + 3],
+                 &values[if_bidx + 4],  &values[if_bidx + 5],
+@@ -251,7 +251,7 @@ read_net_counters( long long *values )
+                 &values[if_bidx + 14], &values[if_bidx + 15]);
+ 
+             SUBDBG("\nRead "
+-                "%llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
++                "%lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld %lld\n",
+                 values[if_bidx + 0],  values[if_bidx + 1],
+                 values[if_bidx + 2],  values[if_bidx + 3],
+                 values[if_bidx + 4],  values[if_bidx + 5],
+commit c810cd0d90baead96838145004545cc156b7ab77
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Tue Aug 13 14:13:55 2013 -0400
+
+    Close resource leaks
+    
+    User dcb reported several resource leaks in trac bug #184.
+    --------------------
+    I just ran the static analysis checker "cppcheck" over the source
+    code of papi-5.2.0
+    
+    It said
+    
+    1. [linux-memory.c:711]: (error) Resource leak: sys_cpu
+    
+    2. [papi_preset.c:735]: (error) Resource leak: fp
+    
+    3. [components/micpower/linux-micpower.c:166]: (error) Resource leak: fp
+    
+    I've checked them all and they all look like resource leaks to me.
+    
+    Suggest code rework.
+    ----------------------------------
+
+diff --git a/src/components/micpower/linux-micpower.c b/src/components/micpower/linux-micpower.c
+index 896e75f..4da4577 100644
+--- a/src/components/micpower/linux-micpower.c
++++ b/src/components/micpower/linux-micpower.c
+@@ -163,6 +163,7 @@ read_sysfs_file( long long* counts)
+ 				retval&= fscanf(fp, "%lld %lld %lld", &counts[i], &counts[i+1], &counts[i+2] );
+ 		}
+ 
++		fclose(fp);
+ 		return retval;
+ }
+ 
+diff --git a/src/linux-memory.c b/src/linux-memory.c
+index 6c69fbd..bf6c420 100644
+--- a/src/linux-memory.c
++++ b/src/linux-memory.c
+@@ -707,6 +707,7 @@ sparc_sysfs_cpu_attr( char *name, char **result )
+ 			return 0;
+ 		}
+ 	}
++	closedir( sys_cpu );
+ 	return -1;
+ }
+ 
+diff --git a/src/papi_preset.c b/src/papi_preset.c
+index 9485793..603c8df 100644
+--- a/src/papi_preset.c
++++ b/src/papi_preset.c
+@@ -732,12 +732,14 @@ _xml_papi_hwi_setup_all_presets( char *arch, hwi_dev_notes_t * notes )
+ 
+ 	if ( !p ) {
+ 		PAPIERROR( "Couldn't allocate memory for XML parser." );
++		fclose(fp);
+ 		return ( PAPI_ESYS );
+ 	}
+ 	XML_SetElementHandler( p, _xml_start, _xml_end );
+ 	XML_SetCharacterDataHandler( p, _xml_content );
+ 	if ( fp == NULL ) {
+ 		PAPIERROR( "Error opening Preset XML file." );
++		fclose(fp);
+ 		return ( PAPI_ESYS );
+ 	}
+ 
+@@ -749,11 +751,13 @@ _xml_papi_hwi_setup_all_presets( char *arch, hwi_dev_notes_t * notes )
+ 
+ 		if ( buffer == NULL ) {
+ 			PAPIERROR( "Couldn't allocate memory for XML buffer." );
++			fclose(fp);
+ 			return ( PAPI_ESYS );
+ 		}
+ 		len = fread( buffer, 1, BUFFSIZE, fp );
+ 		if ( ferror( fp ) ) {
+ 			PAPIERROR( "XML read error." );
++			fclose(fp);
+ 			return ( PAPI_ESYS );
+ 		}
+ 		done = feof( fp );
+@@ -761,10 +765,13 @@ _xml_papi_hwi_setup_all_presets( char *arch, hwi_dev_notes_t * notes )
+ 			PAPIERROR( "Parse error at line %d:\n%s\n",
+ 					   XML_GetCurrentLineNumber( p ),
+ 					   XML_ErrorString( XML_GetErrorCode( p ) ) );
++			fclose(fp);
+ 			return ( PAPI_ESYS );
+ 		}
+-		if ( error )
++		if ( error ) {
++			fclose(fp);
+ 			return ( PAPI_ESYS );
++		}
+ 	} while ( !done );
+ 	XML_ParserFree( p );
+ 	fclose( fp );
+commit e5b335740fad31cd230295508f2a4e9fb77a2878
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Fri Nov 8 15:15:28 2013 -0500
+
+    multiplex_cost: check return value on PAPI_set_opt
+    
+    Thanks to Will Cohen for reporting based upon output of coverity.
+
+diff --git a/src/utils/multiplex_cost.c b/src/utils/multiplex_cost.c
+index 8fbd7a4..2f8216a 100644
+--- a/src/utils/multiplex_cost.c
++++ b/src/utils/multiplex_cost.c
+@@ -112,7 +112,8 @@ init_test(int SoftwareMPX, int KernelMPX, int* Events)
+   option.multiplex.eventset = SoftwareMPX;
+   option.multiplex.ns = itimer.itimer.ns;
+ 
+-  PAPI_set_opt( PAPI_MULTIPLEX, &option );
++  if ( (retval = PAPI_set_opt( PAPI_MULTIPLEX, &option )) != PAPI_OK )
++      test_fail( __FILE__, __LINE__, "PAPI_set_opt", retval);
+ 
+   for (i = 0; i < options.min - 1; i++) {
+ 	if ( options.kernel_mpx ) {
+@@ -249,7 +250,8 @@ main( int argc, char **argv )
+   option.multiplex.eventset = SoftwareMPX;
+   option.multiplex.ns = itimer.itimer.ns;
+ 
+-  PAPI_set_opt( PAPI_MULTIPLEX, &option );
++  if ( PAPI_OK != (retval = PAPI_set_opt( PAPI_MULTIPLEX, &option )))
++      test_fail( __FILE__, __LINE__, "PAPI_set_opt", retval);
+ 
+   if ( !options.kernel_mpx && !options.force_sw ) {
+ 	test_fail(__FILE__, __LINE__, "No tests to run.", -1);
+commit 83c31e25409040aac8178a4a3f89111efd060cc0
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Fri Nov 8 16:10:18 2013 -0500
+
+    perf_event.c: Check return value of ioctl
+    
+    Thanks to Will Cohen for reporting based upon output of coverity.
+
+diff --git a/src/components/perf_event/perf_event.c b/src/components/perf_event/perf_event.c
+index 4b52cce..b4b2656 100644
+--- a/src/components/perf_event/perf_event.c
++++ b/src/components/perf_event/perf_event.c
+@@ -1909,7 +1909,9 @@ _pe_dispatch_timer( int n, hwd_siginfo_t *info, void *uc)
+     return;
+   }
+         
+-  ioctl( fd, PERF_EVENT_IOC_DISABLE, NULL );
++  if (ioctl( fd, PERF_EVENT_IOC_DISABLE, NULL ) == -1 ) {
++      PAPIERROR("ioctl(PERF_EVENT_IOC_DISABLE) failed.\n");
++  }
+ 
+   if ( ( thread->running_eventset[cidx]->state & PAPI_PROFILING ) && 
+        !( thread->running_eventset[cidx]->profile.flags & 
+commit 60fb1dd4497df7d0ea77d88f586142ceb3e22b32
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Thu Nov 21 13:18:49 2013 -0500
+
+    command_line utility: Initialize a variable
+    
+    Initialize data_type to PAPI_DATATYPE_INT64
+    Addresses a coverity error
+    Error: COMPILER_WARNING: [#def19]
+    papi-5.2.0/src/utils/command_line.c:133:4: warning: 'data_type' may be used uninitialized in this function [-Wmaybe-uninitialized]
+    switch (data_type) {
+            ^
+
+diff --git a/src/utils/command_line.c b/src/utils/command_line.c
+index 36f7df5..2f4a816 100644
+--- a/src/utils/command_line.c
++++ b/src/utils/command_line.c
+@@ -56,7 +56,7 @@ main( int argc, char **argv )
+ 	char *success;
+ 	PAPI_event_info_t info;
+ 	int EventSet = PAPI_NULL;
+-	int i, j, data_type, event;
++	int i, j, event, data_type = PAPI_DATATYPE_INT64;
+ 	int u_format = 0;
+ 	int hex_format = 0;
+ 
+commit e43b1138296866795c5db1a6dcd123d312af1b46
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Wed Jul 23 15:40:47 2014 -0400
+
+    native_avail.c: Bug fixes and updates
+    
+    Thanks to Gary Mohr
+    --------------------------------------------------
+    This patch fixes a couple of problems found in the papi_native_avail program.
+    
+    First change fixes a problem introduced when the -validate option was added.  This
+    option causes events to get added to an event set but never removes them.  This change
+    will remove them if the add works.  This change also fixes a coverity detected error
+    where the return value from PAPI_destroy_eventset was being ignored.
+    
+    Second change improves the delimitor check when separating the event description from
+    the event mask description.  The previous check only looked for a colon but some of the
+    event descriptions contain a colon so descriptions would get displayed incorrectly.  The
+    new check finds the "masks:" substring which is what papi inserts to separate these two
+    descriptions.
+    
+    Third change adds code to allow the user to enter events of the form pmu:::event or
+    pmu::event when using the -e option in the program.
+
+diff --git a/src/utils/native_avail.c b/src/utils/native_avail.c
+index 2073ed7..59fc1b4 100644
+--- a/src/utils/native_avail.c
++++ b/src/utils/native_avail.c
+@@ -227,13 +232,19 @@ parse_unit_masks( PAPI_event_info_t * info )
+ 	if ( ( pmask = strchr( ptr, ':' ) ) == NULL ) {
+ 		return ( 0 );
+ 	}
+-	memmove( info->symbol, pmask, ( strlen( pmask ) + 1 ) * sizeof ( char ) );
+-	pmask = strchr( info->long_descr, ':' );
+-	if ( pmask == NULL )
++	memmove( info->symbol, pmask, ( strlen(pmask) + 1 ) * sizeof(char) );
++
++	//  The description field contains the event description followed by a tag 'masks:'
++	//  and then the mask description (if there was a mask with this event).  The following
++	//  code isolates the mask description part of this information.
++
++	pmask = strstr( info->long_descr, "masks:" );
++	if ( pmask == NULL ) {
+ 		info->long_descr[0] = 0;
+-	else
+-		memmove( info->long_descr, pmask + sizeof ( char ),
+-				 ( strlen( pmask ) + 1 ) * sizeof ( char ) );
++	} else {
++		pmask += 6;        // bump pointer past 'masks:' identifier in description
++		memmove( info->long_descr, pmask, (strlen(pmask) + 1) * sizeof(char) );
++	}
+ 	return ( 1 );
+ }
+ 
+@@ -295,8 +306,20 @@ main( int argc, char **argv )
+ 			 "Event name:", info.symbol);
+ 		 printf( "%-29s|%s|\n", "Description:", info.long_descr );
+ 
++		  /* handle the PAPI component-style events which have a component:::event type */
++		  char *ptr;
++		  if ((ptr=strstr(flags.name, ":::"))) {
++		    ptr+=3;
++		  /* handle libpfm4-style events which have a pmu::event type event name */
++		  } else if ((ptr=strstr(flags.name, "::"))) {
++		    ptr+=2;
++		  }
++		  else {
++		    ptr=flags.name;
++		  }
++
+ 		     /* if unit masks exist but none specified, process all */
+-		     if ( !strchr( flags.name, ':' ) ) {
++		     if ( !strchr( ptr, ':' ) ) {
+ 			if ( PAPI_enum_event( &i, PAPI_NTV_ENUM_UMASKS ) == PAPI_OK ) {
+ 			   printf( "\nUnit Masks:\n" );
+ 			   do {
+commit 74041b3ebcfc69575efb4ff830b9dc2f651b458b
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Fri Aug 29 14:44:08 2014 -0400
+
+    event_info utility: address coverity defect
+    
+    From Gary Mohr
+    --------------
+    This patch corrects a defect reported by Coverity.  The defect reported
+    that the call to PAPI_enum_cmp_event was setting retval which was never
+    getting used before it got set again by a call to PAPI_get_event_info.
+    
+    After looking at the code, I decided that we should not be trying to get
+    the next event inside a loop that is enumerating masks for the current
+    event.  It makes more sense to break out of the loop to get masks and
+    let the outer loop that is walking the events get the next event.
+    --------------
+
+diff --git a/src/utils/event_info.c b/src/utils/event_info.c
+index d1010b6..1de375f 100644
+--- a/src/utils/event_info.c
++++ b/src/utils/event_info.c
+@@ -237,8 +237,7 @@ enum_native_events( FILE * f, int cidx)
+ 		    retval = PAPI_get_event_info( k, &info );
+ 		    if ( retval == PAPI_OK ) {
+ 		       if ( test_event( k )!=PAPI_OK ) {
+-			 retval = PAPI_enum_cmp_event( &i, PAPI_ENUM_EVENTS, cidx );
+-			  continue;
++			   break;
+ 		       }
+ 		       xmlize_event( f, &info, -1 );
+ 		    }
+commit 07990f85c706221f41d8b27bb2aebfc6c4874dbd
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Tue Sep 2 11:54:07 2014 -0400
+
+    ctests/ Address coverity reported defects
+    
+    Thanks to Gary Mohr for the patch
+    ---------------------------------
+    he contents of this patch file fix defects reported by Coverity in the
+    directory 'papi/src/ctests'.
+    
+    The defect reported in branches.c was that a comparison between
+    different kinds of data was being done.
+    
+    The defect reported in calibrate.c was that the variable
+    'papi_event_str' could end up without a null terminator.
+    
+    The defects reported in describe.c, get_event_component.c, and
+    krentel_pthreads.c were that return values from function calls were
+    being stored in a variable but never being used.
+    
+    I also did a little clean-up in describe.c.  This test had been failing
+    for me on Intel NHM and SNBEP but now it runs and reports that it
+    PASSED.
+    ---------------------------------
+
+diff --git a/src/ctests/branches.c b/src/ctests/branches.c
+index 930329e..5292323 100644
+--- a/src/ctests/branches.c
++++ b/src/ctests/branches.c
+@@ -94,7 +94,7 @@ main( int argc, char **argv )
+ 	/* Find a reasonable number of iterations (each 
+ 	 * event active 20 times) during the measurement
+ 	 */
+-	t2 = 10000 * 20 * nevents;	/* Target: 10000 usec/multiplex, 20 repeats */
++	t2 = (long long)(10000 * 20) * nevents;	/* Target: 10000 usec/multiplex, 20 repeats */
+ 	if ( t2 > 30e6 )
+ 		test_skip( __FILE__, __LINE__, "This test takes too much time",
+ 				   retval );
+diff --git a/src/ctests/calibrate.c b/src/ctests/calibrate.c
+index a3dea0a..e370ba9 100644
+--- a/src/ctests/calibrate.c
++++ b/src/ctests/calibrate.c
+@@ -160,7 +160,8 @@ main( int argc, char *argv[] )
+ 				print_help( argv );
+ 				exit( 1 );
+ 			}
+-			strncpy( papi_event_str, argv[i + 1], sizeof ( papi_event_str ) );
++			strncpy( papi_event_str, argv[i + 1], sizeof ( papi_event_str ) - 1);
++			papi_event_str[sizeof ( papi_event_str )-1] = '\0';
+ 			i++;
+ 		} else if ( strstr( argv[i], "-d" ) )
+ 			double_precision = 1;
+diff --git a/src/ctests/describe.c b/src/ctests/describe.c
+index d29bf72..f03309e 100644
+--- a/src/ctests/describe.c
++++ b/src/ctests/describe.c
+@@ -25,7 +25,6 @@ main( int argc, char **argv )
+ 	int retval;
+ 	long long g1[2];
+ 	int eventcode = PAPI_TOT_INS;
+-	char eventname[PAPI_MAX_STR_LEN];
+ 	PAPI_event_info_t info, info1, info2;
+ 
+ 	tests_quiet( argc, argv );	/* Set TESTS_QUIET variable */
+@@ -52,18 +51,19 @@ main( int argc, char **argv )
+ 		test_fail( __FILE__, __LINE__, "PAPI_stop", retval );
+ 
+ 	/* Case 0, no info, should fail */
+-	eventname[0] = '\0';
+ 	eventcode = 0;
+ /*
+    if ( ( retval = PAPI_describe_event(eventname,(int *)&eventcode,eventdesc) ) == PAPI_OK)
+      test_fail(__FILE__,__LINE__,"PAPI_describe_event",retval);	   
+ */
++	if (!TESTS_QUIET) {
++	    printf("This test expects a 'PAPI Error' to be returned from this PAPI call.\n");
++	}
+ 	if ( ( retval = PAPI_get_event_info( eventcode, &info ) ) == PAPI_OK )
+ 		test_fail( __FILE__, __LINE__, "PAPI_get_event_info", retval );
+ 
+ 	/* Case 1, fill in name field. */
+ 	eventcode = PAPI_TOT_INS;
+-	eventname[0] = '\0';
+ /*
+    if ( ( retval = PAPI_describe_event(eventname,(int *)&eventcode,eventdesc) ) != PAPI_OK)
+      test_fail(__FILE__,__LINE__,"PAPI_describe_event",retval);	   
+@@ -85,11 +85,9 @@ main( int argc, char **argv )
+    if ( ( retval = PAPI_describe_event(eventname,(int *)&eventcode,eventdesc) ) != PAPI_OK)
+      test_fail(__FILE__,__LINE__,"PAPI_describe_event",retval);	   
+ */
+-	strcpy( eventname, info1.symbol );
+-	if ( ( retval =
+-		   PAPI_event_name_to_code( eventname,
+-									( int * ) &eventcode ) ) != PAPI_OK )
++	if ( ( retval = PAPI_event_name_to_code( info1.symbol, ( int * ) &eventcode ) ) != PAPI_OK ) {
+ 		test_fail( __FILE__, __LINE__, "PAPI_event_name_to_code", retval );
++	}
+ 
+ 	if ( eventcode != PAPI_TOT_INS )
+ 		test_fail( __FILE__, __LINE__,
+diff --git a/src/ctests/get_event_component.c b/src/ctests/get_event_component.c
+index ae1bdd9..874f394 100644
+--- a/src/ctests/get_event_component.c
++++ b/src/ctests/get_event_component.c
+@@ -42,8 +42,7 @@ main( int argc, char **argv )
+             test_fail( __FILE__, __LINE__, "PAPI_get_component_info", 2 );
+          }
+ 
+-         if (cmpinfo->disabled)
+-         {
++         if (cmpinfo->disabled && !TESTS_QUIET) {
+            printf( "Name:   %-23s %s\n", cmpinfo->name ,cmpinfo->description);
+            printf("   \\-> Disabled: %s\n",cmpinfo->disabled_reason);
+            continue;
+@@ -55,7 +54,12 @@ main( int argc, char **argv )
+        if (retval!=PAPI_OK) continue;
+ 
+        do {
+-          retval = PAPI_get_event_info( i, &info );
++	   if (PAPI_get_event_info( i, &info ) != PAPI_OK) {
++	       if (!TESTS_QUIET) {
++		   printf("Getting information about event: %#x failed\n", i);
++	       }
++	       continue;
++	   }
+ 	  our_cid=PAPI_get_event_component(i);
+ 
+ 	  if (our_cid!=cid) {
+diff --git a/src/ctests/krentel_pthreads.c b/src/ctests/krentel_pthreads.c
+index a8b97ff..2417976 100644
+--- a/src/ctests/krentel_pthreads.c
++++ b/src/ctests/krentel_pthreads.c
+@@ -125,11 +125,18 @@ my_thread( void *v )
+ 	}
+ 
+ 	PAPI_stop( EventSet, &value );
+-	PAPI_remove_event( EventSet, EVENT );
+-	PAPI_destroy_eventset( &EventSet );
++	retval = PAPI_remove_event( EventSet, EVENT );
++	if ( PAPI_OK != retval ) {
++	    test_fail( __FILE__, __LINE__, "PAPI_remove_event", retval );
++	}
++	retval = PAPI_destroy_eventset( &EventSet );
++	if ( PAPI_OK != retval ) {
++	    test_fail( __FILE__, __LINE__, "PAPI_destroy_eventset", retval );
++	}
+ 	retval = PAPI_unregister_thread(  );
+-	if ( retval != PAPI_OK )
++	if ( PAPI_OK != retval ) {
+ 		test_fail( __FILE__, __LINE__, "PAPI_unregister_thread", retval );
++	}
+ 	return ( NULL );
+ }
+ 
+commit 266c61a4d4e5beee43cce7e3ef1d64da202c0b09
+Author: James Ralph <ralph@icl.utk.edu>
+Date:   Fri Sep 19 17:46:42 2014 -0400
+
+    Address coverity reported issues in src/
+    
+    Thanks to Gary Mohr
+    -------------------
+    Changes in this patch file:
+    
+    linux-common.c:  Add code to insure that cpu info vendor_string and
+        model_string buffers are NULL terminated strings.  Also insure that
+        the value which gets read into mdi->exe_info.fullname gets NULL
+        terminated. This makes it safe to use the  'strxxx' functions on the
+        value (which is done immediately after it is read in).
+    
+    papi_hl.c:  Fix call to _hl_rate_calls() where the third argument was
+        not the correct data type.
+    
+    papi_internal.c:  Add code to insure that event info name, short_desc,
+        and long_desc buffers are NULL terminated strings.
+    
+    papi_user_events.c:  While processing define symbols, insure that the
+        'local_line', 'name', and 'value'
+        buffers get NULL terminated (so we can safely use
+    	    'strxxx' functions on them).
+        Insure that the 'symbol' field in the user defined
+        event ends up NULL terminated.
+        Rearrange code to avoid falling through from one
+        case to the next in a switch statement.
+        Coverity flagged falling out the bottom of a case
+        statement as a potential defect but it
+        was doing what it should.
+    
+    sw_multiplex.c:  Unnecessary test.  The value of ESI can not be NULL
+        when this code is reached.
+    
+    x86_cpuid_info.c:  The variable need_leaf4 is set but not used.  The
+        only place it gets set returns without
+        checking its value.  The place that checks its value
+        never could have set its value non-zero.
+
+diff --git a/src/linux-common.c b/src/linux-common.c
+index 4adc232..614a83c 100644
+--- a/src/linux-common.c
++++ b/src/linux-common.c
+@@ -171,6 +171,7 @@ int
+ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+ {
+     int tmp, retval = PAPI_OK;
++    unsigned int strSize;
+     char maxargs[PAPI_HUGE_STR_LEN], *t, *s;
+     float mhz = 0.0;
+     FILE *f;
+@@ -197,14 +198,17 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+        /* Vendor Name and Vendor Code */
+     rewind( f );
+     s = search_cpu_info( f, "vendor_id", maxargs );
++    strSize = sizeof(hwinfo->vendor_string);
+     if ( s && ( t = strchr( s + 2, '\n' ) ) ) {
+        *t = '\0';
++       if (strlen(s+2) >= strSize-1)     s[strSize+1] = '\0';
+        strcpy( hwinfo->vendor_string, s + 2 );
+     } else {
+        rewind( f );
+        s = search_cpu_info( f, "vendor", maxargs );
+        if ( s && ( t = strchr( s + 2, '\n' ) ) ) {
+ 	  *t = '\0';
++     if (strlen(s+2) >= strSize-1)     s[strSize+1] = '\0';
+ 	  strcpy( hwinfo->vendor_string, s + 2 );
+        } else {
+ 	  rewind( f );
+@@ -212,6 +216,7 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+ 	  if ( s && ( t = strchr( s + 2, '\n' ) ) ) {
+ 	     *t = '\0';
+ 	     s = strtok( s + 2, " " );
++        if (strlen(s) >= strSize-1)     s[strSize-1] = '\0';
+ 	     strcpy( hwinfo->vendor_string, s );
+ 	  } else {
+ 	     rewind( f );
+@@ -258,14 +263,17 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+        /* Model Name */
+     rewind( f );
+     s = search_cpu_info( f, "model name", maxargs );
++    strSize = sizeof(hwinfo->model_string);
+     if ( s && ( t = strchr( s + 2, '\n' ) ) ) {
+        *t = '\0';
++       if (strlen(s+2) >= strSize-1)     s[strSize+1] = '\0';
+        strcpy( hwinfo->model_string, s + 2 );
+     } else {
+        rewind( f );
+        s = search_cpu_info( f, "family", maxargs );
+        if ( s && ( t = strchr( s + 2, '\n' ) ) ) {
+ 	  *t = '\0';
++     if (strlen(s+2) >= strSize-1)     s[strSize+1] = '\0';
+ 	  strcpy( hwinfo->model_string, s + 2 );
+        } else {
+ 	  rewind( f );
+@@ -274,6 +282,7 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+ 	     *t = '\0';
+ 	     strtok( s + 2, " " );
+ 	     s = strtok( NULL, " " );
++        if (strlen(s) >= strSize-1)     s[strSize-1] = '\0';
+ 	     strcpy( hwinfo->model_string, s );
+ 	  } else {
+ 	     rewind( f );
+@@ -282,6 +291,7 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+ 		*t = '\0';
+ 		/* get just the first token */
+ 		s = strtok( s + 2, " " );
++	if (strlen(s) >= strSize-1)     s[strSize-1] = '\0';
+ 		strcpy( hwinfo->model_string, s );
+ 	     }
+ 	  }
+@@ -444,15 +454,18 @@ _linux_get_system_info( papi_mdi_t *mdi ) {
+ 	mdi->pid = pid;
+ 
+ 	sprintf( maxargs, "/proc/%d/exe", ( int ) pid );
+-	if ( readlink( maxargs, mdi->exe_info.fullname, PAPI_HUGE_STR_LEN ) < 0 ) {
++   if ( (retval = readlink( maxargs, mdi->exe_info.fullname, PAPI_HUGE_STR_LEN-1 )) < 0 ) {
+ 		PAPIERROR( "readlink(%s) returned < 0", maxargs );
+ 		return PAPI_ESYS;
+ 	}
++   if (retval > PAPI_HUGE_STR_LEN-1)   retval=PAPI_HUGE_STR_LEN-1;
++   mdi->exe_info.fullname[retval] = '\0';
+ 
+ 	/* Careful, basename can modify it's argument */
+ 
+ 	strcpy( maxargs, mdi->exe_info.fullname );
+-	strcpy( mdi->exe_info.address_info.name, basename( maxargs ) );
++   strncpy( mdi->exe_info.address_info.name, basename( maxargs ), PAPI_HUGE_STR_LEN-1);
++   mdi->exe_info.address_info.name[PAPI_HUGE_STR_LEN-1] = '\0';
+ 
+ 	SUBDBG( "Executable is %s\n", mdi->exe_info.address_info.name );
+ 	SUBDBG( "Full Executable is %s\n", mdi->exe_info.fullname );
+diff --git a/src/papi_hl.c b/src/papi_hl.c
+index 19111e7..4fcfe23 100644
+--- a/src/papi_hl.c
++++ b/src/papi_hl.c
+@@ -204,13 +204,13 @@ int
+ PAPI_flips( float *rtime, float *ptime, long long *flpins, float *mflips )
+ {
+ 	int retval;
+-	int events = PAPI_FP_INS;
++   int events[1] = {PAPI_FP_INS};
+ 	long long values = 0;
+ 
+ 	if ( rtime == NULL || ptime == NULL || flpins == NULL || mflips == NULL )
+ 		return PAPI_EINVAL;
+ 
+-	retval = _hl_rate_calls( rtime, ptime, &events, &values, flpins, mflips, HL_FLIP );
++   retval = _hl_rate_calls( rtime, ptime, events, &values, flpins, mflips, HL_FLIP );
+ 	return ( retval );
+ }
+ 
+@@ -259,13 +259,13 @@ int
+ PAPI_flops( float *rtime, float *ptime, long long *flpops, float *mflops )
+ {
+ 	int retval;
+-	int events = PAPI_FP_OPS;
++   int events[1] = {PAPI_FP_OPS};
+ 	long long values = 0;
+ 
+ 	if ( rtime == NULL || ptime == NULL || flpops == NULL || mflops == NULL )
+ 		return PAPI_EINVAL;
+ 
+-	retval = _hl_rate_calls( rtime, ptime, &events, &values, flpops, mflops, HL_FLOP );
++   retval = _hl_rate_calls( rtime, ptime, events, &values, flpops, mflops, HL_FLOP );
+ 	return ( retval );
+ }
+ 
+diff --git a/src/papi_internal.c b/src/papi_internal.c
+index d354b76..3c51717 100644
+--- a/src/papi_internal.c
++++ b/src/papi_internal.c
+@@ -2162,20 +2162,22 @@ _papi_hwi_get_preset_event_info( int EventCode, PAPI_event_info_t * info )
+ 	unsigned int j;
+ 
+ 	if ( _papi_hwi_presets[i].symbol ) {	/* if the event is in the preset table */
+-	   /* set whole structure to 0 */
++      // since we are setting the whole structure to zero the strncpy calls below will 
++      // be leaving NULL terminates strings as long as they copy 1 less byte than the 
++      // buffer size of the field.
+ 	   memset( info, 0, sizeof ( PAPI_event_info_t ) );
+ 
+ 	   info->event_code = ( unsigned int ) EventCode;
+ 	   strncpy( info->symbol, _papi_hwi_presets[i].symbol,
+-		    sizeof(info->symbol));
++	    sizeof(info->symbol)-1);
+ 
+ 	   if ( _papi_hwi_presets[i].short_descr != NULL )
+ 	      strncpy( info->short_descr, _papi_hwi_presets[i].short_descr,
+-				          sizeof ( info->short_descr ) );
++		          sizeof ( info->short_descr )-1 );
+ 
+ 	   if ( _papi_hwi_presets[i].long_descr != NULL )
+ 	      strncpy( info->long_descr,  _papi_hwi_presets[i].long_descr,
+-				          sizeof ( info->long_descr ) );
++		          sizeof ( info->long_descr )-1 );
+ 
+ 	   info->event_type = _papi_hwi_presets[i].event_type;
+ 	   info->count = _papi_hwi_presets[i].count;
+@@ -2185,17 +2187,17 @@ _papi_hwi_get_preset_event_info( int EventCode, PAPI_event_info_t * info )
+ 
+ 	   if ( _papi_hwi_presets[i].postfix != NULL )
+ 	      strncpy( info->postfix, _papi_hwi_presets[i].postfix,
+-				          sizeof ( info->postfix ) );
++		          sizeof ( info->postfix )-1 );
+ 
+ 	   for(j=0;j < info->count; j++) {
+ 	      info->code[j]=_papi_hwi_presets[i].code[j];
+ 	      strncpy(info->name[j], _papi_hwi_presets[i].name[j],
+-		      sizeof(info->name[j]));
++	      sizeof(info->name[j])-1);
+ 	   }
+ 
+ 	   if ( _papi_hwi_presets[i].note != NULL ) {
+ 	      strncpy( info->note, _papi_hwi_presets[i].note,
+-				          sizeof ( info->note ) );
++		          sizeof ( info->note )-1 );
+ 	   }
+ 
+ 	   return PAPI_OK;
+diff --git a/src/papi_user_events.c b/src/papi_user_events.c
+index 04fc4af..b1f124a 100644
+--- a/src/papi_user_events.c
++++ b/src/papi_user_events.c
+@@ -246,10 +246,11 @@ get_event_line( char **place, FILE * table, char **tmp_perfmon_events_table )
+ 
+ int add_define( char *line, list_t* LIST ) {
+   char *t;
+-  char local_line[USER_EVENT_OPERATION_LEN];
++  char local_line[USER_EVENT_OPERATION_LEN+1];
+   list_t *temp;
+ 
+   strncpy( local_line, line, USER_EVENT_OPERATION_LEN );
++  local_line[USER_EVENT_OPERATION_LEN] = '\0';
+ 
+   temp = (list_t*)papi_malloc(sizeof(list_t));
+ 
+@@ -262,12 +263,14 @@ int add_define( char *line, list_t* LIST ) {
+   
+   /* next token should be the name */
+   t = strtok(NULL, " ");
+-  strncpy( temp->name, t, PAPI_MIN_STR_LEN);
++  strncpy( temp->name, t, PAPI_MIN_STR_LEN-1);
++  temp->name[PAPI_MIN_STR_LEN-1] = '\0';
+ 
+   /* next token should be the value */
+   t = strtok(NULL," ");
+   t[strlen(t)] = '\0';
+-  strncpy( temp->value, t, PAPI_MIN_STR_LEN);
++  strncpy( temp->value, t, PAPI_MIN_STR_LEN-1);
++  temp->value[PAPI_MIN_STR_LEN-1] = '\0';
+ 
+   temp->next = LIST->next;
+   LIST->next = temp;
+@@ -395,12 +398,15 @@ check_preset_events (char *target, user_defined_event_t* ue, int* msi)
+ 		strcat(ue->operation, temp);
+ 		ue->events[ue->count++] = _papi_hwi_presets[j].code[0];
+ 	  } else {
+-		op = '-';
+ 		switch ( _papi_hwi_presets[j].derived_int ) {
+ 		  case DERIVED_ADD:
+ 		  case DERIVED_ADD_PS:
+-			op = '+';
+ 		  case DERIVED_SUB:
++	    if (_papi_hwi_presets[j].derived_int == DERIVED_SUB) {
++		op = '-';
++	    } else {
++		op = '+';
++	    }
+ 			for ( k = 0; k < (int) _papi_hwi_presets[j].count; k++) {
+ 			  ue->events[ue->count++] = _papi_hwi_presets[j].code[k];
+ 			  if (k%2)
+@@ -574,7 +580,8 @@ load_user_event_table( char *file_name)
+ 	  goto nextline;
+ 	} 
+ 
+-	strncpy(foo->symbol, t, PAPI_MIN_STR_LEN);
++   // the entire structure was zeroed so if we only copy one less that what fits in the 'symbol' buffer, it will insure that this buffer is NULL terminated
++   strncpy(foo->symbol, t, PAPI_MIN_STR_LEN-1);
+ #ifdef SHOW_LOADS
+ 	INTDBG("Found a user event named %s\n", foo->symbol );
+ #endif
+diff --git a/src/sw_multiplex.c b/src/sw_multiplex.c
+index 22db6c2..4b2109c 100644
+--- a/src/sw_multiplex.c
++++ b/src/sw_multiplex.c
+@@ -1136,8 +1136,6 @@ mpx_check( int EventSet )
+ 	if ( strcmp( _papi_hwi_system_info.hw_info.model_string, "POWER6" ) == 0 ) {
+ 		unsigned int chk_domain =
+ 			PAPI_DOM_USER + PAPI_DOM_KERNEL + PAPI_DOM_SUPERVISOR;
+-		if ( ESI == NULL )
+-			return ( PAPI_ENOEVST );
+ 
+ 		if ( ( ESI->domain.domain & chk_domain ) != chk_domain ) {
+ 			PAPIERROR
+diff --git a/src/x86_cpuid_info.c b/src/x86_cpuid_info.c
+index dacc021..2527f3c 100644
+--- a/src/x86_cpuid_info.c
++++ b/src/x86_cpuid_info.c
+@@ -1416,8 +1416,6 @@ init_intel_leaf2( PAPI_mh_info_t * mh_info , int *num_levels)
+ 	int size;						   /* size of the descriptor table */
+ 	int last_level = 0;				   /* how many levels in the cache hierarchy */
+ 
+-	int need_leaf4=0;
+-
+ 	/* All of Intel's cache info is in 1 call to cpuid
+ 	 * however it is a table lookup :(
+ 	 */
+@@ -1459,7 +1457,6 @@ init_intel_leaf2( PAPI_mh_info_t * mh_info , int *num_levels)
+ 				if ( i ) {	 /* skip the low order byte in eax [0]; it's the count (see above) */
+ 				   if ( reg.descrip[i] == 0xff ) {
+ 				      MEMDBG("Warning! PAPI x86_cache: must implement cpuid leaf 4\n");
+-				      need_leaf4=1;
+ 				      return PAPI_ENOSUPP;
+ 				      /* we might continue instead */
+ 				      /* in order to get TLB info  */
+@@ -1480,9 +1477,6 @@ init_intel_leaf2( PAPI_mh_info_t * mh_info , int *num_levels)
+ early_exit:
+ 	MEMDBG( "# of Levels: %d\n", last_level );
+ 	*num_levels=last_level;
+-	if (need_leaf4) {
+-	   return PAPI_ENOSUPP;
+-	}
+ 	return PAPI_OK;
+ }
+ 

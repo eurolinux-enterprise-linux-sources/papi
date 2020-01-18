@@ -1,0 +1,31 @@
+From e5b1007a1c2ec49548104291f5a4ec5ee4d8ebfc Mon Sep 17 00:00:00 2001
+From: William Cohen <wcohen@redhat.com>
+Date: Tue, 14 Oct 2014 10:30:17 -0400
+Subject: [PATCH] Recognize hsw_ep from newer versions of libpfm
+
+A recent September 11, 2014 patch (98c00b) to the upstream libpfm
+split out Intel family 6 model 63 into its own name of "hsw_ep".  The
+papi_events.csv needs to be updated to support that new name.  This
+should have now impact for older libpfms that still identify Intel
+family 6 model 63 as "hswv" and "hsw_ep" map to the same papi presets.
+
+Signed-off-by: William Cohen <wcohen@redhat.com>
+---
+ src/papi_events.csv | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/papi_events.csv b/src/papi_events.csv
+index aea3b04..752ec20 100644
+--- a/src/papi_events.csv
++++ b/src/papi_events.csv
+@@ -638,6 +638,7 @@ PRESET,PAPI_TLB_DM,DERIVED_ADD,DTLB_LOAD_MISSES:DEMAND_LD_MISS_CAUSES_A_WALK,DTL
+ 
+ # Intel Haswell events (and most likely also Sandy Bridge)
+ CPU,hsw
++CPU,hsw_ep
+ PRESET,PAPI_TOT_CYC,NOT_DERIVED,CPU_CLK_UNHALTED:THREAD_P
+ PRESET,PAPI_TOT_INS,NOT_DERIVED,INST_RETIRED:ANY_P
+ PRESET,PAPI_REF_CYC,NOT_DERIVED,CPU_CLK_THREAD_UNHALTED:REF_XCLK
+-- 
+1.9.3
+

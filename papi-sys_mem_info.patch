@@ -1,0 +1,33 @@
+From 3cf33279bcfc69b41bbfae827e4a1e6b3917d7a2 Mon Sep 17 00:00:00 2001
+From: Carl Love <cel@us.ibm.com>
+Date: Fri, 10 Oct 2014 13:07:11 -0500
+Subject: [PATCH] PPC64 sys_mem_info array size is wrong
+
+The variable sys_mem_info is an array of type PAPI_mh_info_t.  It is
+statically declared as size 4.  The data for POWER8 is statically
+declared in entry 4 of the array which is beyond the allocated array.  The
+array should be declared without a size so the compiler will automatically
+determine the correct size based on the number of elements being
+initialized.  This patch makes the change.
+
+Signed-off-by: Carl Love <cel@us.ibm.com>
+---
+ src/linux-memory.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/linux-memory.c b/src/linux-memory.c
+index bf6c420..1686299 100644
+--- a/src/linux-memory.c
++++ b/src/linux-memory.c
+@@ -315,7 +315,7 @@ ia64_get_memory_info( PAPI_hw_info_t * hw_info )
+ 
+ #if defined(__powerpc__)
+ 
+-PAPI_mh_info_t sys_mem_info[4] = {
++PAPI_mh_info_t sys_mem_info[] = {
+ 	{2,						 // 970 begin
+ 	 {
+ 	  {						 // level 1 begins
+-- 
+1.8.4.2
+
