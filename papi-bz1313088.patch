@@ -1,0 +1,68 @@
+From 88f6669fa358bf4670d91e379f469e3cd3016543 Mon Sep 17 00:00:00 2001
+From: William Cohen <wcohen@redhat.com>
+Date: Tue, 21 Jun 2016 10:53:32 -0400
+Subject: [PATCH 1/2] Have Fortran test support code report errors more clearly
+
+When a Fortran test called the ftest_skip or ftest_fail the support
+code would attempt to print out error strings.  However, this support
+code would print out gibberish because the string was not properly
+initialized.  There doesn't seem to be a easy way in Fortran to get
+the error string, for the time being just print out the error number
+and people will need to manually map it back to the string.
+
+Signed-off-by: William Cohen <wcohen@redhat.com>
+---
+ src/ftests/ftests_util.F | 14 ++++++--------
+ 1 file changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/src/ftests/ftests_util.F b/src/ftests/ftests_util.F
+index 83433f9..8de2bd1 100644
+--- a/src/ftests/ftests_util.F
++++ b/src/ftests/ftests_util.F
+@@ -108,7 +108,6 @@ C     And also to make the test code read cleaner
+       integer line
+       character*(*) callstr
+       integer retval,ilen
+-      character*(PAPI_MAX_STR_LEN) papi_errstr
+       integer last_char
+       external last_char
+ 
+@@ -134,10 +133,10 @@ C     And also to make the test code read cleaner
+       else if(retval.eq.0)then
+         write(*,*) 'SGI requires root permissions for this test'
+       else
+-        call PAPIF_perror( )
++C Just printing the error number because of difficulty getting error string.
+         ilen=last_char(callstr)
+-        write(*,'(T2,3a)') 'PAPI error in ', callstr(1:ilen), 
+-     *       ': '// papi_errstr(1:last_char(papi_errstr))
++        write(*,'(T2,3a,I3)') 'PAPI error in ', callstr(1:ilen),
++     *       ': ', retval
+       end if
+       call pause()
+       stop
+@@ -153,7 +152,6 @@ C     And also to make the test code read cleaner
+       integer quiet
+       common quiet
+ 
+-      character*(PAPI_MAX_STR_LEN) papi_errstr
+       integer last_char
+       external last_char
+ 
+@@ -165,10 +163,10 @@ C     And also to make the test code read cleaner
+         else if (retval.gt.0) then
+           write(*,*) "Error calculating: ", callstr
+         else
+-          call PAPIF_perror( )
++C Just printing the error number because of difficulty getting error string.
+           ilen=last_char(callstr)
+-          write(*,'(T2,3a)') 'Error in ', callstr(1:ilen),
+-     *         ': ' // papi_errstr(1:last_char(papi_errstr))
++          write(*,'(T2,3a,I3)') 'Error in ', callstr(1:ilen),
++     *         ': ', retval
+         end if
+       end if
+       call pause()
+-- 
+1.8.3.1
+

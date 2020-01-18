@@ -2,7 +2,7 @@
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.2.0
-Release: 14%{?dist}
+Release: 19%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -17,6 +17,13 @@ Patch401: papi-kvmrapl.patch
 Patch500: papi-sys_mem_info.patch
 Patch700: papi-krentel.patch
 Patch900: papi-inficonst.patch
+Patch1000: papi-bz1263666.patch
+Patch1001: papi-bz1326977.patch
+Patch1002: papi-bz1277931.patch
+Patch1003: papi-bz1313088.patch
+Patch1004: papi-postfixcalc.patch
+Patch1005: papi-errmsg.patch
+Patch1006: papi-schedule.patch
 BuildRequires: autoconf
 BuildRequires: doxygen
 BuildRequires: ncurses-devel
@@ -75,6 +82,13 @@ the PAPI user-space libraries and interfaces.
 %patch500 -p1
 %patch700 -p1
 %patch900 -p1
+%patch1000 -p1
+%patch1001 -p1
+%patch1002 -p1
+%patch1003 -p1
+%patch1004 -p1
+%patch1005 -p1
+%patch1006 -p1
 
 %build
 %if %{without bundled_libpfm}
@@ -156,6 +170,25 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/*.a
 
 %changelog
+* Tue Aug 2 2016 William Cohen <wcohen@redhat.com> - 5.2.0-19
+- Rebuild with libpfm-4.7.0.
+
+* Wed Jul 27 2016 William Cohen <wcohen@redhat.com> - 5.2.0-18
+- Check schedulability on aarch64.
+
+* Tue Jul 26 2016 William Cohen <wcohen@redhat.com> - 5.2.0-17
+- Eliminate possible stack smashing.
+
+* Tue Jun 21 2016 William Cohen <wcohen@redhat.com> - 5.2.0-16
+- Correct ftests/tenth test behavior on power. rhbz1313088
+
+* Thu May 12 2016 William Cohen <wcohen@redhat.com> - 5.2.0-15
+- Update papi L1 cache events on POWER7
+- Prevent papi-testsuite segfaults
+- Identify kernels that support rdpmc
+- Correct papi-testsuite byte_profile and sprofile tests on ppc64le
+- Update PAPI_L1_TCM event on Haswells
+
 * Mon Aug 10 2015 William Cohen <wcohen@redhat.com> - 5.2.0-14
 - Fix build for newer infiband libs. rhbz1251645
 
