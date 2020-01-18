@@ -1,0 +1,23 @@
+commit de05a9d88794fad1c94b9cb12215142e61e15a16
+Author: Asim YarKhan <yarkhan@icl.utk.edu>
+Date:   Thu Oct 16 12:50:43 2014 -0400
+
+    PPC64 add support for the Power non virtualized platform
+    
+    Thanks to Carl Love for this patch and the following description:
+    The Power 8 system can be run as a non-virtualized machine.  In
+    this case, the platform is "PowerNV".  This patch adds the platform
+    to the possible IBM platform types.
+
+diff --git a/src/linux-common.c b/src/linux-common.c
+index 614a83c2..85af7005 100644
+--- a/src/linux-common.c
++++ b/src/linux-common.c
+@@ -225,6 +225,7 @@ _linux_get_cpu_info( PAPI_hw_info_t *hwinfo, int *cpuinfo_mhz )
+ 		*t = '\0';
+ 	        s = strtok( s + 2, " " );
+ 		if ( ( strcasecmp( s, "pSeries" ) == 0 ) ||
++                    ( strcasecmp( s, "PowerNV" ) == 0 ) ||
+ 		     ( strcasecmp( s, "PowerMac" ) == 0 ) ) {
+ 		   strcpy( hwinfo->vendor_string, "IBM" );
+ 		}

@@ -2,7 +2,7 @@
 Summary: Performance Application Programming Interface
 Name: papi
 Version: 5.2.0
-Release: 25%{?dist}
+Release: 26%{?dist}
 License: BSD
 Group: Development/System
 URL: http://icl.cs.utk.edu/papi/
@@ -31,6 +31,7 @@ Patch2000: papi-avoid_libpfm_enum.patch
 Patch2001: papi-power9.patch
 Patch2002: papi-p9_presets.patch
 Patch2003: papi-lmsensors.patch
+Patch2004: papi-powernv.patch
 BuildRequires: autoconf
 BuildRequires: doxygen
 BuildRequires: ncurses-devel
@@ -103,6 +104,7 @@ the PAPI user-space libraries and interfaces.
 %patch2001 -p1 -b .power9
 %patch2002 -p1 -b .power9a
 %patch2003 -p1 -b .lm_dyn
+%patch2004 -p1 -b .powernv
 
 %build
 %if %{without bundled_libpfm}
@@ -184,6 +186,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/*.a
 
 %changelog
+* Tue Jan 30 2018 William Cohen <wcohen@redhat.com> - 5.2.0-26
+- Recognize IBM PowerNV processors.
+
 * Thu Nov 30 2017 William Cohen <wcohen@redhat.com> - 5.2.0-25
 - Update IBM Power 9 events. rhbz1510684
 - Make lmsensor dynamically size internal array. rhbz1510497
